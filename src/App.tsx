@@ -99,10 +99,43 @@ export default function App() {
     });
   }, []);
 
-  // Check achievements & handle 3-lives system on stat updates
-  const handleUpdateStats = useCallback((pointsDelta: number, isCorrect: boolean) => {
-    if (isCorrect) {
+  // Check achievements & handle authoritative 5-lives system on stat updates
+  const handleUpdateStats = useCallback((
+    pointsDelta: number,
+    isCorrect: boolean,
+    authoritativeLives?: number,
+    authoritativeTotalScore?: number
+  ) => {
+    if (authoritativeTotalScore !== undefined) {
+      setScore(authoritativeTotalScore);
+    } else if (isCorrect) {
       setScore((prev) => prev + pointsDelta);
+    }
+
+    if (authoritativeLives !== undefined) {
+      setLives(Math.max(0, Math.min(5, authoritativeLives)));
+      if (authoritativeLives <= 0) {
+        sound.playAlert();
+        setTimeout(() => {
+          setGameState('GAME_OVER');
+        }, 700);
+      }
+    } else if (!isCorrect) {
+      // Local fallback decrement (5-lives clamped)
+      setLives((prevLives) => {
+        const nextLives = Math.max(0, prevLives - 1);
+        if (nextLives <= 0) {
+          sound.playAlert();
+          setTimeout(() => {
+            setGameState('GAME_OVER');
+          }, 700);
+          return 0;
+        }
+        return nextLives;
+      });
+    }
+
+    if (isCorrect) {
       setStreak((prev) => {
         const next = prev + 1;
         if (next > maxStreak) setMaxStreak(next);
@@ -117,22 +150,9 @@ export default function App() {
       setStreak(0);
       setWrongAnswersCount((prev) => prev + 1);
 
-      // Decrement Life in 3-lives system
-      setLives((prevLives) => {
-        const nextLives = prevLives - 1;
-        if (nextLives <= 0) {
-          sound.playAlert();
-          setTimeout(() => {
-            setGameState('GAME_OVER');
-          }, 700);
-          return 0;
-        }
-        return nextLives;
-      });
-
       // Reduce station integrity on mistake
       setStationIntegrity((prev) => {
-        const next = prev - 20;
+        const next = Math.max(0, prev - 20);
         if (next <= 0) {
           sound.playAlert();
           setTimeout(() => {

@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "GameSession": {
+      "title": "GameSession",
+      "description": "Authoritative persistent game session state for student progress, score, lives, and versioning.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique user ID" },
+        "sessionId": { "type": "string", "description": "Authoritative session identifier" },
+        "status": { "type": "string", "enum": ["ACTIVE", "GAME_OVER", "VICTORY"] },
+        "lives": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "score": { "type": "integer", "minimum": 0 },
+        "xp": { "type": "integer", "minimum": 0 },
+        "comboCount": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "comboMultiplier": { "type": "number", "minimum": 1.0, "maximum": 2.0 },
+        "currentPhase": { "type": "integer", "minimum": 1 },
+        "currentMission": { "type": "string" },
+        "currentQuestionId": { "type": "string" },
+        "completedSectors": { "type": "array", "items": { "type": "integer" } },
+        "startedAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" },
+        "version": { "type": "integer", "minimum": 1 },
+        "createdAt": { "type": "integer" },
+        "lastActivityAt": { "type": "integer" },
+        "serverVersion": { "type": "string" },
+        "stateVersion": { "type": "integer" },
+        "lastRequestId": { "type": "string" }
+      },
+      "required": ["uid", "sessionId", "status", "lives", "score", "xp", "version", "createdAt", "updatedAt"]
+    },
+    "Attempt": {
+      "title": "Attempt",
+      "description": "Authoritative question or emergency mission attempt with immutable server-side outcome.",
+      "type": "object",
+      "properties": {
+        "attemptId": { "type": "string" },
+        "uid": { "type": "string" },
+        "type": { "type": "string", "enum": ["question", "emergency"] },
+        "questionId": { "type": "string" },
+        "phaseId": { "type": "integer" },
+        "missionId": { "type": "string" },
+        "startedAt": { "type": "integer" },
+        "deadline": { "type": "integer" },
+        "timeAllowedSeconds": { "type": "integer" },
+        "answered": { "type": "boolean" },
+        "answeredAt": { "type": "integer" },
+        "selectedOption": { "type": "string" },
+        "result": { "type": "string" },
+        "scoreAwarded": { "type": "integer" },
+        "xpAwarded": { "type": "integer" },
+        "lifeLost": { "type": "integer" },
+        "comboBefore": { "type": "integer" },
+        "comboAfter": { "type": "integer" },
+        "multiplier": { "type": "number" },
+        "requestId": { "type": "string" },
+        "createdAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" },
+        "version": { "type": "integer" }
+      },
+      "required": ["attemptId", "uid", "type", "startedAt", "deadline", "answered", "version"]
+    }
+  },
+  "firestore": {
+    "/games/{uid}": {
+      "schema": "GameSession",
+      "description": "Authoritative game progress and session document"
+    },
+    "/games/{uid}/attempts/{attemptId}": {
+      "schema": "Attempt",
+      "description": "Authoritative attempt records"
+    }
+  }
+}

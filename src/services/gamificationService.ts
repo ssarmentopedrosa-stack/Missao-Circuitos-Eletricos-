@@ -30,20 +30,25 @@ export function calculateSpeedBonus(
   timeRemainingSeconds: number,
   timeAllowedSeconds: number
 ): SpeedBonusBreakdown {
-  if (timeRemainingSeconds <= 0) {
+  const safeAllowed = Number.isFinite(timeAllowedSeconds) && timeAllowedSeconds > 0 ? timeAllowedSeconds : 90;
+  const safeRemaining = Number.isFinite(timeRemainingSeconds)
+    ? Math.max(0, Math.min(safeAllowed, timeRemainingSeconds))
+    : 0;
+
+  if (safeRemaining <= 0) {
     return { bonusXP: 0, label: 'Tempo Esgotado', tier: 'none' };
   }
 
   // Tier 1: > 60s remaining
-  if (timeRemainingSeconds >= 60) {
+  if (safeRemaining >= 60) {
     return { bonusXP: 200, label: '⚡ Velocidade Hipersônica (+200 XP)', tier: 'supersonic' };
   }
   // Tier 2: 30s - 59s
-  if (timeRemainingSeconds >= 30) {
+  if (safeRemaining >= 30) {
     return { bonusXP: 150, label: '🚀 Diagnóstico Ágil (+150 XP)', tier: 'fast' };
   }
   // Tier 3: 10s - 29s
-  if (timeRemainingSeconds >= 10) {
+  if (safeRemaining >= 10) {
     return { bonusXP: 75, label: '⏱️ Resposta Firme (+75 XP)', tier: 'steady' };
   }
   // Tier 4: < 10s
@@ -56,19 +61,21 @@ export function calculateMissionScore(
   timeAllowedSeconds: number,
   comboCount: number
 ): ScoreCalculationResult {
+  const safeBase = Number.isFinite(basePoints) ? Math.max(0, Math.round(basePoints)) : 0;
   const speedBonus = calculateSpeedBonus(timeRemainingSeconds, timeAllowedSeconds);
   
-  // Combo multiplier: combo 0 or 1 = 1.0x, combo 2 = 1.2x, combo 3 = 1.4x, etc. (capped at 2.0x)
-  const multiplier = comboCount >= 2 ? Math.min(2.0, 1 + (comboCount - 1) * 0.2) : 1.0;
+  // Combo multiplier: combo 0 or 1 = 1.0x, combo 2 = 1.2x, combo 3 = 1.4x, etc. Strictly capped at 2.0x
+  const safeCombo = Number.isFinite(comboCount) ? Math.max(0, Math.floor(comboCount)) : 0;
+  const multiplier = safeCombo >= 2 ? Math.min(2.0, Math.max(1.0, 1 + (safeCombo - 1) * 0.2)) : 1.0;
   
-  const subtotal = basePoints + speedBonus.bonusXP;
-  const comboBonusXP = Math.round(subtotal * (multiplier - 1));
-  const totalXP = Math.round(subtotal * multiplier);
+  const subtotal = safeBase + speedBonus.bonusXP;
+  const comboBonusXP = Math.max(0, Math.round(subtotal * (multiplier - 1)));
+  const totalXP = Math.max(0, Math.round(subtotal * multiplier));
 
   return {
-    baseXP: basePoints,
+    baseXP: safeBase,
     speedBonus,
-    comboMultiplier: multiplier,
+    comboMultiplier: Number(multiplier.toFixed(2)),
     comboBonusXP,
     totalXP,
   };

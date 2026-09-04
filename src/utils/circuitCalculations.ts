@@ -303,3 +303,16 @@ export function diagnoseErrorType(
     explanation: 'A resposta difere da solução autoritativa. Verifique quais ramos do circuito estão ativos e se a grandeza correta foi calculada.',
   };
 }
+
+/**
+ * Fisher-Yates shuffle for question options
+ */
+export function randomizeQuestionOptions<T>(options: T[]): T[] {
+  const cloned = [...options];
+  for (let i = cloned.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [cloned[i], cloned[j]] = [cloned[j], cloned[i]];
+  }
+  return cloned;
+}
+

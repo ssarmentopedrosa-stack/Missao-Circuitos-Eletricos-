@@ -133,6 +133,30 @@ export interface AttemptSubmissionResult {
   correctAnswerId?: 'A' | 'B' | 'C' | 'D' | 'E';
 }
 
+export interface EmergencySubmissionResult {
+  attemptId: string;
+  isCorrect: boolean;
+  isTimeout: boolean;
+  livesRemaining: number;
+  totalScore: number;
+  scoreResult?: {
+    baseXP: number;
+    speedBonus: {
+      bonusXP: number;
+      label: string;
+      tier: 'supersonic' | 'fast' | 'steady' | 'close_call' | 'none';
+    };
+    comboMultiplier: number;
+    comboBonusXP: number;
+    totalXP: number;
+  };
+  errorDiagnosis?: {
+    type: 'conceptual' | 'calculation' | 'unit' | 'interpretation';
+    explanation: string;
+  };
+  expectedValue: number;
+}
+
 export interface TelemetryEvent {
   id: string;
   uid: string;

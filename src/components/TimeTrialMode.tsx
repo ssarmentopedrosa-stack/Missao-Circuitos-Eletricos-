@@ -18,6 +18,7 @@ import { StepByStepSolution } from './StepByStepSolution';
 import { TigraoMascot } from './TigraoMascot';
 import { sound } from '../utils/audio';
 import confetti from 'canvas-confetti';
+import { gameClient, EmergencySubmissionResult } from '../utils/gameClient';
 import { 
   AlertTriangle, 
   ArrowLeft, 
@@ -40,7 +41,12 @@ interface TimeTrialModeProps {
   playerName: string;
   lives: number;
   onBackToMap: () => void;
-  onUpdateStats?: (pointsDelta: number, isCorrect: boolean) => void;
+  onUpdateStats?: (
+    pointsDelta: number,
+    isCorrect: boolean,
+    authoritativeLives?: number,
+    authoritativeTotalScore?: number
+  ) => void;
 }
 
 export const TimeTrialMode: React.FC<TimeTrialModeProps> = ({
@@ -60,6 +66,8 @@ export const TimeTrialMode: React.FC<TimeTrialModeProps> = ({
   const [revealedHintIndex, setRevealedHintIndex] = useState<number>(-1);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [completedMissions, setCompletedMissions] = useState<string[]>(() => getTimeTrialProgress().completedMissionIds);
+  const [currentAttemptId, setCurrentAttemptId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const timerRef = useRef<number | null>(null);
 
@@ -94,83 +102,130 @@ export const TimeTrialMode: React.FC<TimeTrialModeProps> = ({
     setSelectedOptionId(null);
     setShowSolution(false);
     setRevealedHintIndex(-1);
+    setCurrentAttemptId(null);
     setViewState('briefing');
   };
 
-  const handleStartMission = () => {
+  const handleStartMission = async () => {
     sound.playMissionStart();
     setTimeRemaining(selectedMission.timeLimit);
     setSelectedOptionId(null);
     setShowSolution(false);
     setRevealedHintIndex(-1);
     setViewState('active');
+
+    try {
+      const att = await gameClient.startEmergencyMission(selectedMission.id, playerName);
+      setCurrentAttemptId(att.attemptId);
+    } catch {
+      // Local fallback handled internally by gameClient
+    }
   };
 
   // Timeout handler
-  const handleTimeout = () => {
+  const handleTimeout = async () => {
     sound.playAlert();
     setCombo(0);
-    if (onUpdateStats) onUpdateStats(0, false);
     setShowSolution(true);
     setViewState('failed');
+
+    if (currentAttemptId) {
+      try {
+        const result = await gameClient.submitEmergencyMission({
+          attemptId: currentAttemptId,
+          selectedOptionId: 'TIMEOUT',
+          uid: playerName,
+          comboCount: 0,
+        });
+        if (onUpdateStats) {
+          onUpdateStats(0, false, result.livesRemaining, result.totalScore);
+        }
+        return;
+      } catch {
+        // Fallback below
+      }
+    }
+    if (onUpdateStats) onUpdateStats(0, false);
   };
 
-  // Submit student option
-  const handleSubmitAnswer = () => {
-    if (!selectedOptionId || viewState !== 'active') return;
+  // Submit student option (Authoritative verification)
+  const handleSubmitAnswer = async () => {
+    if (!selectedOptionId || viewState !== 'active' || isSubmitting) return;
 
     const chosenOption = selectedMission.options.find((o) => o.id === selectedOptionId);
     if (!chosenOption) return;
 
-    const isCorrect = Math.abs(chosenOption.value - selectedMission.objective.expectedValue) <= (selectedMission.objective.tolerance || 0.1);
-
-    if (isCorrect) {
-      // Calculate gamified score with speed bonus and combo multiplier
-      const nextCombo = combo + 1;
-      setCombo(nextCombo);
-
-      const score = calculateMissionScore(
-        selectedMission.reward.xp,
-        timeRemaining,
-        selectedMission.timeLimit,
-        nextCombo
-      );
-      setScoreResult(score);
-
-      sound.playSuccess();
-      if (score.speedBonus.tier === 'supersonic' || score.speedBonus.tier === 'fast') {
-        setTimeout(() => sound.playSpeedBonus(), 300);
-      }
-      if (nextCombo >= 2) {
-        setTimeout(() => sound.playCombo(nextCombo), 600);
-      }
-
-      // Confetti burst
-      try {
-        confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ['#06b6d4', '#38bdf8', '#fbbf24', '#34d399'],
+    setIsSubmitting(true);
+    try {
+      let result: EmergencySubmissionResult;
+      if (currentAttemptId) {
+        result = await gameClient.submitEmergencyMission({
+          attemptId: currentAttemptId,
+          selectedOptionId,
+          uid: playerName,
+          comboCount: combo,
+          clientTimeLeft: timeRemaining,
         });
-      } catch {
-        // ignore
+      } else {
+        const att = await gameClient.startEmergencyMission(selectedMission.id, playerName);
+        result = await gameClient.submitEmergencyMission({
+          attemptId: att.attemptId,
+          selectedOptionId,
+          uid: playerName,
+          comboCount: combo,
+          clientTimeLeft: timeRemaining,
+        });
       }
 
-      saveTimeTrialProgress(selectedMission.id, score.totalXP, timeRemaining, nextCombo);
-      setCompletedMissions((prev) => Array.from(new Set([...prev, selectedMission.id])));
+      if (result.isCorrect && result.scoreResult) {
+        const nextCombo = combo + 1;
+        setCombo(nextCombo);
+        setScoreResult(result.scoreResult);
 
-      if (onUpdateStats) {
-        onUpdateStats(score.totalXP, true);
+        sound.playSuccess();
+        if (result.scoreResult.speedBonus.tier === 'supersonic' || result.scoreResult.speedBonus.tier === 'fast') {
+          setTimeout(() => sound.playSpeedBonus(), 300);
+        }
+        if (nextCombo >= 2) {
+          setTimeout(() => sound.playCombo(nextCombo), 600);
+        }
+
+        try {
+          confetti({
+            particleCount: 80,
+            spread: 70,
+            origin: { y: 0.6 },
+            colors: ['#06b6d4', '#38bdf8', '#fbbf24', '#34d399'],
+          });
+        } catch {
+          // ignore
+        }
+
+        saveTimeTrialProgress(selectedMission.id, result.scoreResult.totalXP, timeRemaining, nextCombo);
+        setCompletedMissions((prev) => Array.from(new Set([...prev, selectedMission.id])));
+
+        if (onUpdateStats) {
+          onUpdateStats(result.scoreResult.totalXP, true, result.livesRemaining, result.totalScore);
+        }
+
+        setViewState('success');
+      } else {
+        sound.playError();
+        setCombo(0);
+        if (onUpdateStats) {
+          onUpdateStats(0, false, result.livesRemaining, result.totalScore);
+        }
+        setShowSolution(true);
+        setViewState('failed');
       }
-
-      setViewState('success');
-    } else {
+    } catch {
       sound.playError();
       setCombo(0);
       if (onUpdateStats) onUpdateStats(0, false);
       setShowSolution(true);
       setViewState('failed');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

@@ -9,7 +9,7 @@ import { sound } from '../utils/audio';
 import { tigraoVoice } from '../utils/tigraoVoice';
 import { gameClient } from '../utils/gameClient';
 import { telemetry } from '../utils/telemetry';
-import { randomizeQuestionOptions } from '../utils/authoritativeEngine';
+import { randomizeQuestionOptions } from '../utils/circuitCalculations';
 import { QUESTION_TIERED_HINTS, getTieredHintsForQuestion } from '../data/hintsData';
 import { StepByStepSolution } from './StepByStepSolution';
 import confetti from 'canvas-confetti';
@@ -49,7 +49,12 @@ interface SectorScreenProps {
   lives: number;
   onBackToMap: () => void;
   onSectorCompleted: (sectorId: SectorId) => void;
-  onUpdateStats: (pointsDelta: number, isCorrect: boolean) => void;
+  onUpdateStats: (
+    pointsDelta: number,
+    isCorrect: boolean,
+    authoritativeLives?: number,
+    authoritativeTotalScore?: number
+  ) => void;
   stationIntegrity: number;
   score: number;
   streak: number;
@@ -204,7 +209,7 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
 
       setServerExplanation(result.detailedExplanation);
       setServerFeedbackMessage(result.feedbackMessage);
-      onUpdateStats(0, false);
+      onUpdateStats(0, false, result.livesRemaining, result.totalScore);
       telemetry.logEvent('question_timeout', {
         attemptId: currentAttemptId,
         questionId: currentQuestion.id,
@@ -318,7 +323,7 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
         sound.playTigraoBark();
         setFeedbackState('verified_correct');
         setPointsEarned(result.scoreAwarded);
-        onUpdateStats(result.scoreAwarded, true);
+        onUpdateStats(result.scoreAwarded, true, result.livesRemaining, result.totalScore);
 
         tigraoVoice.speak(
           `Excelente diagnóstico! As medições elétricas bateram com precisão. Você creditou +${result.scoreAwarded} pontos na estação!`
@@ -340,7 +345,7 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
         sound.playError();
         setFeedbackState('verified_wrong');
         setPointsEarned(0);
-        onUpdateStats(0, false);
+        onUpdateStats(0, false, result.livesRemaining, result.totalScore);
 
         tigraoVoice.speak(
           'Atenção, astronauta! Os valores medidos não estabilizaram o circuito. Analise o princípio físico e tente novamente!'
