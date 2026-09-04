@@ -290,6 +290,141 @@ class SoundEngine {
       // fallback
     }
   }
+
+  public playMissionStart() {
+    if (!this.enabled || this.effectiveVolume <= 0) return;
+    try {
+      this.initContext();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(300, now);
+      osc.frequency.exponentialRampToValueAtTime(750, now + 0.25);
+
+      gain.gain.setValueAtTime(0.15 * this.effectiveVolume, now);
+      gain.gain.exponentialRampToValueAtTime(0.01 * this.effectiveVolume, now + 0.3);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.3);
+    } catch {
+      // fallback
+    }
+  }
+
+  public playWarning() {
+    if (!this.enabled || this.effectiveVolume <= 0) return;
+    try {
+      this.initContext();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(660, now);
+      osc.frequency.setValueAtTime(550, now + 0.08);
+
+      gain.gain.setValueAtTime(0.08 * this.effectiveVolume, now);
+      gain.gain.exponentialRampToValueAtTime(0.001 * this.effectiveVolume, now + 0.16);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.16);
+    } catch {
+      // fallback
+    }
+  }
+
+  public playCritical() {
+    if (!this.enabled || this.effectiveVolume <= 0) return;
+    try {
+      this.initContext();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(900, now);
+      osc.frequency.setValueAtTime(450, now + 0.06);
+
+      gain.gain.setValueAtTime(0.12 * this.effectiveVolume, now);
+      gain.gain.exponentialRampToValueAtTime(0.001 * this.effectiveVolume, now + 0.12);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.12);
+    } catch {
+      // fallback
+    }
+  }
+
+  public playCombo(comboMultiplier: number = 2) {
+    if (!this.enabled || this.effectiveVolume <= 0) return;
+    try {
+      this.initContext();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const baseFreq = 523.25; // C5
+      const noteFreq = baseFreq * Math.pow(1.15, Math.min(comboMultiplier, 6));
+
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(noteFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(noteFreq * 1.5, now + 0.18);
+
+      gain.gain.setValueAtTime(0.18 * this.effectiveVolume, now);
+      gain.gain.exponentialRampToValueAtTime(0.001 * this.effectiveVolume, now + 0.25);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.25);
+    } catch {
+      // fallback
+    }
+  }
+
+  public playSpeedBonus() {
+    if (!this.enabled || this.effectiveVolume <= 0) return;
+    try {
+      this.initContext();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+
+      [880, 1100, 1320].forEach((f, idx) => {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, now + idx * 0.05);
+
+        gain.gain.setValueAtTime(0.12 * this.effectiveVolume, now + idx * 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001 * this.effectiveVolume, now + idx * 0.05 + 0.12);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now + idx * 0.05);
+        osc.stop(now + idx * 0.05 + 0.12);
+      });
+    } catch {
+      // fallback
+    }
+  }
 }
 
 export const sound = new SoundEngine();

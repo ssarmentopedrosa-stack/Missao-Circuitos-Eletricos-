@@ -13,6 +13,7 @@ interface MainMenuProps {
   onOpenLab?: () => void;
   onOpenCalculator?: () => void;
   onOpenAudioSettings?: () => void;
+  onOpenTimeTrial?: () => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
   completedSectorsCount: number;
@@ -28,6 +29,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   onOpenLab,
   onOpenCalculator,
   onOpenAudioSettings,
+  onOpenTimeTrial,
   soundEnabled,
   onToggleSound,
   completedSectorsCount,
@@ -153,6 +155,18 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             <Play className="w-6 h-6 fill-slate-950" />
             <span>{completedSectorsCount > 0 ? 'CONTINUAR MISSÃO' : '▶ INICIAR MISSÃO'}</span>
           </button>
+
+          {/* Time Trial Emergency Missions Button */}
+          {onOpenTimeTrial && (
+            <button
+              type="button"
+              onClick={() => { sound.playClick(); onOpenTimeTrial(); }}
+              className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-sm sm:text-base font-mono tracking-wider uppercase transition-all shadow-[0_0_25px_rgba(245,158,11,0.4)] transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Zap className="w-5 h-5 fill-slate-950 animate-bounce" />
+              <span>⚡ MODO CONTRARRELÓGIO (EMERGÊNCIAS)</span>
+            </button>
+          )}
 
           {/* Secondary Buttons Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">

@@ -47,6 +47,7 @@ interface StationMapProps {
   onOpenCalculator: () => void;
   onOpenCertificate: () => void;
   onOpenAudioSettings?: () => void;
+  onOpenTimeTrial?: () => void;
 }
 
 export const StationMap: React.FC<StationMapProps> = ({
@@ -65,6 +66,7 @@ export const StationMap: React.FC<StationMapProps> = ({
   onOpenCalculator,
   onOpenCertificate,
   onOpenAudioSettings,
+  onOpenTimeTrial,
 }) => {
   const standardSectors = SECTORS.filter((s) => s.id <= 8);
   const enemSector = SECTORS.find((s) => s.id === 9) || SECTORS[8];
@@ -335,6 +337,19 @@ export const StationMap: React.FC<StationMapProps> = ({
         </h3>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Time Trial Emergency Missions Button */}
+          {onOpenTimeTrial && (
+            <button
+              type="button"
+              onClick={onOpenTimeTrial}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-950/90 to-orange-950/90 hover:from-amber-900 hover:to-orange-900 border border-amber-500/50 text-amber-300 text-xs font-mono font-bold transition-all shadow-[0_0_15px_rgba(245,158,11,0.25)] hover:border-amber-400 cursor-pointer animate-pulse"
+              title="Abrir Missões de Emergência Contrarrelógio"
+            >
+              <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
+              <span>Contrarrelógio (Emergências)</span>
+            </button>
+          )}
+
           {/* Free Laboratory Sandbox Button */}
           <button
             type="button"

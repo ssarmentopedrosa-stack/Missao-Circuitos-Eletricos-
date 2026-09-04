@@ -51,6 +51,12 @@ export interface CircuitConfig {
   }[];
 }
 
+export interface TieredHints {
+  concept: string;
+  formula: string;
+  calculation: string;
+}
+
 export interface DetailedExplanation {
   formula: string;
   substitution: string;
@@ -74,6 +80,7 @@ export interface TableData {
   rows: (string | number)[][];
 }
 
+// Full question format (contains private answer key for server authority)
 export interface Question {
   id: string;
   sectorId: SectorId;
@@ -83,15 +90,68 @@ export interface Question {
   title: string;
   narrative: string;
   question: string;
-  timeSeconds: number; // e.g. 30, 45, 60, 90, 120
+  timeSeconds: number; // e.g. 120, 135, 150, 180, 210
   basePoints: number; // 100, 150, 250, 500
   options: [QuestionOption, QuestionOption, QuestionOption, QuestionOption, QuestionOption];
   correctAnswer: 'A' | 'B' | 'C' | 'D' | 'E';
   tigraoHint: string;
+  hintsTiered?: TieredHints;
   detailedExplanation: DetailedExplanation;
   circuitConfig?: CircuitConfig;
   contextData?: ContextDataItem[];
   tableData?: TableData;
+}
+
+// Public question format sent to client browser (WITHOUT private correctAnswer)
+export type QuestionPublic = Omit<Question, 'correctAnswer'>;
+
+export interface QuestionAttempt {
+  attemptId: string;
+  questionId: string;
+  sectorId: SectorId;
+  uid: string;
+  startedAt: number;
+  deadlineAt: number;
+  timeAllowedSeconds: number;
+  usedHintLevel: 0 | 1 | 2 | 3;
+  answered: boolean;
+  selectedOptionId?: string;
+  isCorrect?: boolean;
+  scoreAwarded?: number;
+  completedAt?: number;
+}
+
+export interface AttemptSubmissionResult {
+  attemptId: string;
+  isCorrect: boolean;
+  isTimeout: boolean;
+  livesRemaining: number;
+  scoreAwarded: number;
+  totalScore: number;
+  detailedExplanation: DetailedExplanation;
+  feedbackMessage: string;
+  correctAnswerId?: 'A' | 'B' | 'C' | 'D' | 'E';
+}
+
+export interface TelemetryEvent {
+  id: string;
+  uid: string;
+  timestamp: number;
+  type: 
+    | 'game_started'
+    | 'sector_started'
+    | 'sector_completed'
+    | 'question_started'
+    | 'question_answered'
+    | 'question_timeout'
+    | 'hint_used'
+    | 'pause_used'
+    | 'calculator_used'
+    | 'lab_opened'
+    | 'game_over'
+    | 'victory_achieved'
+    | 'achievement_unlocked';
+  payload: Record<string, unknown>;
 }
 
 export interface LabComponent {
@@ -124,6 +184,85 @@ export interface AudioSettings {
   selectedVoiceURI?: string;
 }
 
+export interface SolutionStep {
+  id: string;
+  title: string;
+  description: string;
+  formula?: string;
+  substitution?: string;
+  calculation?: string;
+  result?: string;
+  highlight?: string[];
+}
+
+export interface CircuitData {
+  voltage: number;
+  resistors: number[];
+  configuration: 'series' | 'parallel' | 'mixed' | 'single';
+  current?: number;
+  equivalentResistance?: number;
+  power?: number;
+  labels?: string[];
+  switches?: { id: string; closed: boolean; label: string }[];
+  meters?: { type: 'voltmeter' | 'ammeter'; value: number; unit: string; targetComponentId?: string }[];
+}
+
+export type ErrorClassification = 'conceptual' | 'calculation' | 'interpretation' | 'unit';
+
+export interface StepByStepSolutionProps {
+  question?: Question | QuestionPublic;
+  studentAnswer?: string;
+  correctAnswer?: string;
+  explanation?: SolutionStep[];
+  circuit?: CircuitData;
+  onContinue: () => void;
+  errorType?: ErrorClassification;
+  errorExplanation?: string;
+}
+
+export type EmergencyDifficulty = 'recruta' | 'engenheiro' | 'especialista' | 'comandante' | 'enem';
+
+export interface MissionObjective {
+  type: 'calculate_current' | 'calculate_voltage' | 'calculate_resistance' | 'calculate_power' | 'equivalent_resistance';
+  expectedValue: number;
+  tolerance?: number;
+  promptText: string;
+  unit: string;
+  formulaUsed: string;
+}
+
+export interface MissionReward {
+  xp: number;
+  credits?: number;
+  bonusXP?: number;
+}
+
+export interface EmergencyMissionOption {
+  id: string;
+  value: number;
+  label: string;
+  distractorReason?: string;
+}
+
+export interface EmergencyMission {
+  id: string;
+  title: string;
+  narrative: string;
+  subsystem: string;
+  difficulty: EmergencyDifficulty;
+  difficultyLabel: string;
+  timeLimit: number; // e.g. 90, 75, 60 seconds
+  voltage: number;
+  circuit: CircuitData;
+  objective: MissionObjective;
+  reward: MissionReward;
+  options: EmergencyMissionOption[];
+  hints: string[];
+  solutionSteps: SolutionStep[];
+}
+
+export type GameMode = 'campaign' | 'timeTrial' | 'emergency';
+
 export interface GameStateData {
   status: 
     | 'MENU' 
@@ -134,11 +273,12 @@ export interface GameStateData {
     | 'MAPA_ESTACAO' 
     | 'SECTOR_ACTIVE' 
     | 'SECTOR_COMPLETE' 
+    | 'TIME_TRIAL'
     | 'VITORIA' 
     | 'GAME_OVER';
   playerName: string;
-  lives: number; // 0 to 3
-  maxLives: number; // default 3
+  lives: number; // 0 to 5
+  maxLives: number; // default 5
   currentSectorId: SectorId | null;
   currentQuestionIndex: number;
   score: number;

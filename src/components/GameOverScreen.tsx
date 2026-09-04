@@ -136,7 +136,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
           <div className="max-w-md mx-auto py-2">
             <TigraoMascot
               mood="alert"
-              speech={`Não se preocupe, Astronauta ${playerName}! Vamos reiniciar os geradores auxiliares, recuperar suas 3 vidas e tentar de novo com calma. Você é muito inteligente e vai conseguir!`}
+              speech={`Não se preocupe, Astronauta ${playerName}! Vamos reiniciar os geradores auxiliares, recuperar suas 5 vidas e tentar de novo com calma. Você é muito inteligente e vai conseguir!`}
               size="md"
             />
           </div>
@@ -149,7 +149,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
               className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-extrabold font-mono text-xs sm:text-sm tracking-wider uppercase transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)] flex items-center gap-2 cursor-pointer transform hover:scale-105"
             >
               <RotateCcw className="w-4 h-4" />
-              <span>REINICIAR COM 3 VIDAS</span>
+              <span>REINICIAR COM 5 VIDAS</span>
             </button>
 
             <button

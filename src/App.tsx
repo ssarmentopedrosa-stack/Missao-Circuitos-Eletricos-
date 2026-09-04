@@ -13,6 +13,7 @@ import { FreeLaboratory } from './components/FreeLaboratory';
 import { AstronautCalculator } from './components/AstronautCalculator';
 import { CertificateModal } from './components/CertificateModal';
 import { AudioSettingsModal } from './components/AudioSettingsModal';
+import { TimeTrialMode } from './components/TimeTrialMode';
 import { sound } from './utils/audio';
 
 const STORAGE_KEY = 'ARES3_ORBITAL_CIRCUITS_SAVE';
@@ -56,7 +57,7 @@ export default function App() {
       if (saved) {
         const data = JSON.parse(saved);
         if (data.playerName) setPlayerName(data.playerName);
-        if (typeof data.lives === 'number') setLives(data.lives > 0 ? data.lives : MAX_LIVES);
+        if (typeof data.lives === 'number') setLives(Math.min(MAX_LIVES, Math.max(1, data.lives)));
         if (data.score) setScore(data.score);
         if (data.completedSectors) setCompletedSectors(data.completedSectors);
         if (data.unlockedAchievements) setUnlockedAchievements(data.unlockedAchievements);
@@ -235,6 +236,7 @@ export default function App() {
             onOpenLab={() => setShowLab(true)}
             onOpenCalculator={() => setShowCalculator(true)}
             onOpenAudioSettings={() => setShowAudioSettings(true)}
+            onOpenTimeTrial={() => setGameState('TIME_TRIAL')}
             soundEnabled={soundEnabled}
             onToggleSound={() => setSoundEnabled(!soundEnabled)}
             completedSectorsCount={completedSectors.length}
@@ -268,6 +270,18 @@ export default function App() {
             onOpenCalculator={() => setShowCalculator(true)}
             onOpenCertificate={() => setShowCertificate(true)}
             onOpenAudioSettings={() => setShowAudioSettings(true)}
+            onOpenTimeTrial={() => setGameState('TIME_TRIAL')}
+          />
+        )}
+
+        {gameState === 'TIME_TRIAL' && (
+          <TimeTrialMode
+            playerName={playerName}
+            lives={lives}
+            onBackToMap={() => setGameState('MAPA_ESTACAO')}
+            onUpdateStats={(pointsDelta, isCorrect) => {
+              handleUpdateStats(pointsDelta, isCorrect);
+            }}
           />
         )}
 
