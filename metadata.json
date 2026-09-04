@@ -1,0 +1,6 @@
+{
+  "name": "Circuitos Elétricos — Missão: Salvar a Estação Orbital",
+  "description": "Jogo educativo gamificado de Física sobre circuitos elétricos, Lei de Ohm, resistores, potência e energia com o mascote Tigrão na estação orbital.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
