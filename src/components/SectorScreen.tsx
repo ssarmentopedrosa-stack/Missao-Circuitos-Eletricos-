@@ -76,7 +76,7 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
 
   const [questionIndex, setQuestionIndex] = useState<number>(0);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
-  const [feedbackState, setFeedbackState] = useState<'answering' | 'verified_correct' | 'verified_wrong' | 'timeout'>('answering');
+  const [feedbackState, setFeedbackState] = useState<'answering' | 'verified_correct' | 'verified_wrong' | 'timeout' | 'communication_error'>('answering');
   const [showDetailedSolution, setShowDetailedSolution] = useState<boolean>(false);
   const [usedHintLevel, setUsedHintLevel] = useState<0 | 1 | 2 | 3>(0);
   const [sectorDone, setSectorDone] = useState<boolean>(false);
@@ -153,6 +153,7 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
   // Reset inputs and start attempt on question change
   useEffect(() => {
     setSelectedOptionId(null);
+    setCurrentAttemptId('');
     setFeedbackState('answering');
     setShowDetailedSolution(false);
     setUsedHintLevel(0);
@@ -299,16 +300,50 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
     });
   };
 
-  // Authoritative Answer Submission with Idempotency Protection
+  // Authoritative Answer Submission with Idempotency Protection and Technical Fallback
   const handleVerifyAnswer = async () => {
-    if (!selectedOptionId || feedbackState !== 'answering' || isPaused || isSubmitting) return;
+    if (!selectedOptionId || (feedbackState !== 'answering' && feedbackState !== 'communication_error') || isPaused || isSubmitting) return;
 
     setIsSubmitting(true);
     if (timerRef.current) clearInterval(timerRef.current);
 
+    let activeAttemptId = currentAttemptId;
+
+    // If attemptId is empty (e.g. initial start was slow or network glitched), acquire it now
+    if (!activeAttemptId) {
+      try {
+        const { attempt, questionPublic } = await gameClient.startQuestion(
+          currentQuestion.id,
+          sectorId,
+          playerName
+        );
+        activeAttemptId = attempt.attemptId;
+        setCurrentAttemptId(attempt.attemptId);
+        setAuthoritativeDeadline(attempt.deadlineAt);
+
+        if (displayOptions.length === 0) {
+          const shuffled = randomizeQuestionOptions(questionPublic.options);
+          const letters: ('A' | 'B' | 'C' | 'D' | 'E')[] = ['A', 'B', 'C', 'D', 'E'];
+          const mapped: DisplayOption[] = shuffled.map((opt, idx) => ({
+            visualLetter: letters[idx],
+            originalOptionId: opt.id as 'A' | 'B' | 'C' | 'D' | 'E',
+            text: opt.text,
+          }));
+          setDisplayOptions(mapped);
+        }
+      } catch (err: any) {
+        // FASE 10: Technical error must NEVER penalize student
+        setIsSubmitting(false);
+        setFeedbackState('communication_error');
+        setServerFeedbackMessage(err.message || 'Falha de comunicação ao sincronizar a questão com a estação.');
+        tigraoVoice.speak('Aviso da telemetria: falha técnica na sincronização. Suas vidas estão preservadas! Tente reenviar.');
+        return;
+      }
+    }
+
     try {
       const result = await gameClient.submitAnswer({
-        attemptId: currentAttemptId,
+        attemptId: activeAttemptId,
         selectedOptionId,
         usedHintLevel,
         uid: playerName,
@@ -336,7 +371,7 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
         });
 
         telemetry.logEvent('question_answered', {
-          attemptId: currentAttemptId,
+          attemptId: activeAttemptId,
           questionId: currentQuestion.id,
           isCorrect: true,
           score: result.scoreAwarded,
@@ -352,16 +387,19 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
         );
 
         telemetry.logEvent('question_answered', {
-          attemptId: currentAttemptId,
+          attemptId: activeAttemptId,
           questionId: currentQuestion.id,
           isCorrect: false,
         });
       }
-    } catch {
-      // Fallback if network fails completely
-      sound.playError();
-      setFeedbackState('verified_wrong');
-      onUpdateStats(0, false);
+    } catch (err: any) {
+      // FASE 10: Communication failure is NOT a physics error! Do NOT deduct lives!
+      sound.playAlert();
+      setFeedbackState('communication_error');
+      setServerFeedbackMessage(
+        err.message || 'Falha técnica na transmissão da telemetria. Nenhuma vida foi deduzida. Verifique a conexão e clique em REENVIAR RESPOSTA.'
+      );
+      tigraoVoice.speak('Aviso técnico: perda temporária de sinal. Suas vidas continuam intactas. Clique em Reenviar para transmitir.');
     } finally {
       setIsSubmitting(false);
     }
@@ -398,6 +436,7 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
     if (isSubmitting) return;
     sound.playClick();
     setSelectedOptionId(null);
+    setCurrentAttemptId('');
     setFeedbackState('answering');
     setShowDetailedSolution(false);
     setTimeLeft(currentQuestion?.timeSeconds || 120);
@@ -884,6 +923,8 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
                   <span className="text-emerald-300 font-semibold">Diagnóstico exato! +{pointsEarned} pontos creditados.</span>
                 ) : feedbackState === 'timeout' ? (
                   <span className="text-rose-400 font-semibold">Tempo de tolerância esgotado (-1 vida). Analise o circuito e tente novamente.</span>
+                ) : feedbackState === 'communication_error' ? (
+                  <span className="text-amber-400 font-semibold">Falha de conexão com a telemetria. Suas vidas foram mantidas intactas!</span>
                 ) : (
                   <span className="text-rose-400 font-semibold">Resposta incorreta (-1 vida). Reflita sobre a relação física e tente novamente.</span>
                 )}
@@ -903,6 +944,16 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
                   >
                     <Zap className="w-4 h-4" />
                     <span>{isSubmitting ? 'VALIDANDO...' : 'CONFIRMAR RESPOSTA'}</span>
+                  </button>
+                ) : feedbackState === 'communication_error' ? (
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={handleVerifyAnswer}
+                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-cyan-500 hover:from-amber-400 hover:to-cyan-400 text-slate-950 font-mono font-bold text-xs sm:text-sm tracking-wider uppercase transition-all shadow-[0_0_20px_rgba(245,158,11,0.4)] flex items-center gap-2 cursor-pointer transform hover:scale-105"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span>{isSubmitting ? 'TRANSMITINDO...' : 'REENVIAR RESPOSTA'}</span>
                   </button>
                 ) : feedbackState === 'verified_correct' ? (
                   <button
@@ -936,6 +987,8 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
             <div className={`p-5 sm:p-6 rounded-2xl border backdrop-blur-md space-y-4 transition-all ${
               feedbackState === 'verified_correct'
                 ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-100 shadow-[0_0_30px_rgba(16,185,129,0.15)]'
+                : feedbackState === 'communication_error'
+                ? 'bg-amber-950/40 border-amber-500/50 text-amber-100 shadow-[0_0_30px_rgba(245,158,11,0.15)]'
                 : 'bg-red-950/40 border-red-500/50 text-red-100 shadow-[0_0_30px_rgba(239,68,68,0.15)]'
             }`}>
               <div className="flex items-center justify-between flex-wrap gap-2">
@@ -950,6 +1003,11 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
                       <Clock className="w-5 h-5 text-rose-400 animate-pulse" />
                       <span className="text-rose-300">TEMPO ESGOTADO! O NÓ DE DADOS PRECISA DE REINÍCIO</span>
                     </>
+                  ) : feedbackState === 'communication_error' ? (
+                    <>
+                      <AlertCircle className="w-5 h-5 text-amber-400 animate-pulse" />
+                      <span className="text-amber-300">TELEMETRIA: FALHA TÉCNICA TEMPORÁRIA</span>
+                    </>
                   ) : (
                     <>
                       <AlertCircle className="w-5 h-5 text-red-400" />
@@ -959,14 +1017,16 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
                 </div>
 
                 {/* Toggle Button for Detailed Step-by-Step Resolution */}
-                <button
-                  type="button"
-                  onClick={() => setShowDetailedSolution(!showDetailedSolution)}
-                  className="px-3 py-1.5 rounded-lg font-mono text-xs font-bold border transition-colors flex items-center gap-1.5 cursor-pointer bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700"
-                >
-                  <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>{showDetailedSolution ? 'Ocultar Resolução' : 'Ver Demonstração Passo a Passo'}</span>
-                </button>
+                {feedbackState !== 'communication_error' && (
+                  <button
+                    type="button"
+                    onClick={() => setShowDetailedSolution(!showDetailedSolution)}
+                    className="px-3 py-1.5 rounded-lg font-mono text-xs font-bold border transition-colors flex items-center gap-1.5 cursor-pointer bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700"
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{showDetailedSolution ? 'Ocultar Resolução' : 'Ver Demonstração Passo a Passo'}</span>
+                  </button>
+                )}
               </div>
 
               {/* Feedback Narrative */}
@@ -974,21 +1034,33 @@ export const SectorScreen: React.FC<SectorScreenProps> = ({
                 {serverFeedbackMessage || (
                   feedbackState === 'verified_correct'
                     ? 'Parabéns! Você aplicou com maestria os princípios da eletrodinâmica e restabeleceu a estabilidade operacional.'
+                    : feedbackState === 'communication_error'
+                    ? 'O sinal com a estação oscilou durante a transmissão. Nenhuma vida foi deduzida. Clique em REENVIAR RESPOSTA para confirmar seu diagnóstico.'
                     : 'Não desanime, astronauta! Os erros em circuitos nos ensinam onde a energia está sendo dissipada ou onde o nó elétrico foi interpretado de forma equivocada. Analise a fundamentação e refaça a medição.'
                 )}
               </p>
 
               {/* Detailed Mathematical & Physical Proof */}
-              {showDetailedSolution && (
+              {showDetailedSolution && feedbackState !== 'communication_error' && (
                 <div className="pt-3 border-t border-slate-800/80 space-y-4 animate-in fade-in duration-200">
                   <StepByStepSolution
                     question={currentQuestion}
-                    studentAnswer={
-                      displayOptions.find((o) => o.originalOptionId === selectedOptionId)?.visualLetter ||
-                      selectedOptionId ||
-                      'Não respondida'
-                    }
-                    correctAnswer={currentQuestion.correctAnswer}
+                    studentAnswer={(() => {
+                      const selectedOpt = currentQuestion.options.find((o) => o.id === selectedOptionId);
+                      const visualOpt = displayOptions.find((o) => o.originalOptionId === selectedOptionId);
+                      if (selectedOpt) {
+                        return `${visualOpt ? `[${visualOpt.visualLetter}] ` : ''}${selectedOpt.text}`;
+                      }
+                      return selectedOptionId || 'Não respondida';
+                    })()}
+                    correctAnswer={(() => {
+                      const correctOpt = currentQuestion.options.find((o) => o.id === currentQuestion.correctAnswer);
+                      const visualCorrect = displayOptions.find((o) => o.originalOptionId === currentQuestion.correctAnswer);
+                      if (correctOpt) {
+                        return `${visualCorrect ? `[${visualCorrect.visualLetter}] ` : ''}${correctOpt.text}`;
+                      }
+                      return currentQuestion.correctAnswer;
+                    })()}
                     errorType={feedbackState === 'timeout' ? 'interpretation' : 'conceptual'}
                     errorExplanation={serverFeedbackMessage || 'Observe com atenção a relação entre corrente, resistência e ddp neste setor.'}
                     onContinue={() => setShowDetailedSolution(false)}

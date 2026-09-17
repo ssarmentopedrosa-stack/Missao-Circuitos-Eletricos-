@@ -15,6 +15,7 @@ import { CertificateModal } from './components/CertificateModal';
 import { AudioSettingsModal } from './components/AudioSettingsModal';
 import { TimeTrialMode } from './components/TimeTrialMode';
 import { sound } from './utils/audio';
+import { gameClient } from './utils/gameClient';
 
 const STORAGE_KEY = 'ARES3_ORBITAL_CIRCUITS_SAVE';
 const MAX_LIVES = 5;
@@ -192,7 +193,12 @@ export default function App() {
   }, [unlockAchievement]);
 
   // Game Reset / Restart
-  const handleRestartMission = () => {
+  const handleRestartMission = async () => {
+    try {
+      await gameClient.resetSession(playerName);
+    } catch {
+      // ignore
+    }
     setLives(MAX_LIVES);
     setScore(0);
     setStreak(0);
@@ -207,7 +213,12 @@ export default function App() {
     setGameState('MAPA_ESTACAO');
   };
 
-  const handleRetryAfterGameOver = () => {
+  const handleRetryAfterGameOver = async () => {
+    try {
+      await gameClient.resetSession(playerName);
+    } catch {
+      // ignore
+    }
     setLives(MAX_LIVES);
     setStationIntegrity(100);
     setGameState('MAPA_ESTACAO');
@@ -218,7 +229,12 @@ export default function App() {
     setActiveSectorId(null);
   };
 
-  const handleStartGame = () => {
+  const handleStartGame = async () => {
+    try {
+      await gameClient.resetSession(playerName);
+    } catch {
+      // ignore
+    }
     if (completedSectors.length > 0) {
       setGameState('MAPA_ESTACAO');
     } else {

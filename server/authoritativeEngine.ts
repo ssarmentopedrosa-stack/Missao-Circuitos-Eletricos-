@@ -279,10 +279,20 @@ export function submitQuestionAttempt(params: {
       throw new Error('Vidas esgotadas (Game Over). Reinicie a partida para continuar.');
     }
 
-    const sectorList = ALL_QUESTIONS[(attempt.phaseId as SectorId) || 1] || [];
-    const question = sectorList.find((q) => q.id === attempt.questionId);
+    let question: Question | undefined;
+    for (const list of Object.values(ALL_QUESTIONS)) {
+      const found = list.find((q) => q.id === attempt.questionId);
+      if (found) {
+        question = found;
+        break;
+      }
+    }
     if (!question) {
-      throw new Error('Questão autoritativa não localizada no servidor.');
+      const sectorList = ALL_QUESTIONS[(attempt.phaseId as SectorId) || 1] || [];
+      question = sectorList.find((q) => q.id === attempt.questionId);
+    }
+    if (!question) {
+      throw new Error(`Questão autoritativa "${attempt.questionId}" não localizada no servidor.`);
     }
 
     const isTimeout = now > attempt.deadline;
