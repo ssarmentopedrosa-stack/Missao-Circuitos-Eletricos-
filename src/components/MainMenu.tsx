@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, BookOpen, Trophy, HelpCircle, Zap, Sparkles, Volume2, VolumeX, ShieldCheck, Atom, User, Edit2, Check } from 'lucide-react';
+import { Play, BookOpen, Trophy, HelpCircle, Zap, Sparkles, Volume2, VolumeX, ShieldCheck, Atom, User, Edit2, Check, GraduationCap } from 'lucide-react';
 import { TigraoMascot } from './TigraoMascot';
 import { sound } from '../utils/audio';
 
@@ -14,6 +14,7 @@ interface MainMenuProps {
   onOpenCalculator?: () => void;
   onOpenAudioSettings?: () => void;
   onOpenTimeTrial?: () => void;
+  onOpenTeacherModal?: () => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
   completedSectorsCount: number;
@@ -30,6 +31,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   onOpenCalculator,
   onOpenAudioSettings,
   onOpenTimeTrial,
+  onOpenTeacherModal,
   soundEnabled,
   onToggleSound,
   completedSectorsCount,
@@ -217,6 +219,20 @@ export const MainMenu: React.FC<MainMenuProps> = ({
               <span>📖 COMO JOGAR</span>
             </button>
           </div>
+
+          {/* Teacher Telemetry Portal Button */}
+          {onOpenTeacherModal && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => { sound.playClick(); onOpenTeacherModal(); }}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-950/80 hover:bg-slate-900 border border-cyan-500/30 hover:border-cyan-400/60 text-cyan-400 font-bold font-mono text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_10px_rgba(6,182,212,0.15)]"
+              >
+                <GraduationCap className="w-4 h-4 text-cyan-400" />
+                <span>🎓 PAINEL DO PROFESSOR (TELEMETRIA PEDAGÓGICA)</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Progress Snapshot Footer */}

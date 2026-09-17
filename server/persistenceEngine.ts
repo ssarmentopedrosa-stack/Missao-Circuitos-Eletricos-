@@ -626,3 +626,119 @@ function parseAttemptRow(row: Record<string, unknown>): PersistedAttempt {
     version: Number(row.version),
   };
 }
+
+// -------------------------------------------------------------
+// TEACHER & PEDAGOGICAL ANALYTICS
+// -------------------------------------------------------------
+export const SECTOR_PEDAGOGICAL_NAMES: Record<number, string> = {
+  1: '1ª Lei de Ohm e Condutores',
+  2: '2ª Lei de Ohm e Resistividade',
+  3: 'Associação em Série',
+  4: 'Associação em Paralelo',
+  5: 'Circuitos Mistos e Nós',
+  6: 'Potência Elétrica e Joule',
+  7: 'Geradores e Força Eletromotriz',
+  8: 'Receptores e Rendimento',
+  9: 'Leis de Kirchhoff e Wheatstone',
+};
+
+export function getTeacherDashboardOverview() {
+  const gamesRows = db.prepare(`SELECT * FROM games ORDER BY lastActivityAt DESC`).all() as Record<string, unknown>[];
+  const attemptsRows = db.prepare(`SELECT * FROM attempts WHERE answered = 1 ORDER BY answeredAt DESC`).all() as Record<string, unknown>[];
+
+  const students = gamesRows.map((g) => {
+    const studentAttempts = attemptsRows.filter((a) => String(a.uid) === String(g.uid));
+    const totalAnswered = studentAttempts.length;
+    const correctCount = studentAttempts.filter((a) => Number(a.lifeLost) === 0).length;
+    const errorCount = totalAnswered - correctCount;
+    const accuracy = totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0;
+
+    let completedSectors: number[] = [];
+    try {
+      completedSectors = JSON.parse(String(g.completedSectors || '[]'));
+    } catch {
+      completedSectors = [];
+    }
+
+    return {
+      uid: String(g.uid),
+      status: String(g.status),
+      lives: Number(g.lives),
+      score: Number(g.score),
+      xp: Number(g.xp),
+      completedSectors,
+      totalAnswered,
+      correctCount,
+      errorCount,
+      accuracy,
+      lastActivityAt: Number(g.lastActivityAt),
+    };
+  });
+
+  const totalQuestionsAnswered = attemptsRows.length;
+  const totalCorrect = attemptsRows.filter((a) => Number(a.lifeLost) === 0).length;
+  const totalErrors = totalQuestionsAnswered - totalCorrect;
+  const globalAccuracy = totalQuestionsAnswered > 0 ? Math.round((totalCorrect / totalQuestionsAnswered) * 100) : 0;
+  const avgScore = students.length > 0 ? Math.round(students.reduce((acc, s) => acc + s.score, 0) / students.length) : 0;
+
+  // Sector breakdown
+  const sectorMetrics: Array<{
+    sectorId: number;
+    sectorName: string;
+    attemptsCount: number;
+    correctCount: number;
+    errorCount: number;
+    accuracyPercent: number;
+    needsIntervention: boolean;
+  }> = [];
+
+  for (let sId = 1; sId <= 9; sId++) {
+    const sectorAttempts = attemptsRows.filter((a) => Number(a.phaseId) === sId);
+    const count = sectorAttempts.length;
+    const sCorrect = sectorAttempts.filter((a) => Number(a.lifeLost) === 0).length;
+    const sError = count - sCorrect;
+    const acc = count > 0 ? Math.round((sCorrect / count) * 100) : 100;
+
+    sectorMetrics.push({
+      sectorId: sId,
+      sectorName: SECTOR_PEDAGOGICAL_NAMES[sId] || `Setor ${sId}`,
+      attemptsCount: count,
+      correctCount: sCorrect,
+      errorCount: sError,
+      accuracyPercent: acc,
+      needsIntervention: count >= 3 && acc < 60,
+    });
+  }
+
+  // Recent 20 pedagogical telemetry events
+  const recentEvents = attemptsRows.slice(0, 20).map((a) => ({
+    attemptId: String(a.attemptId),
+    uid: String(a.uid),
+    type: String(a.type),
+    questionId: String(a.questionId || a.missionId || 'n/a'),
+    sectorId: Number(a.phaseId || 1),
+    sectorName: SECTOR_PEDAGOGICAL_NAMES[Number(a.phaseId || 1)] || 'Setor Orbital',
+    isCorrect: Number(a.lifeLost) === 0,
+    scoreAwarded: Number(a.scoreAwarded || 0),
+    timestamp: Number(a.answeredAt || a.startedAt),
+  }));
+
+  return {
+    classSummary: {
+      totalStudents: students.length,
+      activeStudents: students.filter((s) => s.status === 'ACTIVE').length,
+      gameOverStudents: students.filter((s) => s.status === 'GAME_OVER').length,
+      totalQuestionsAnswered,
+      totalCorrect,
+      totalErrors,
+      globalAccuracy,
+      avgScore,
+      databaseMode: 'SQLite-WAL-ACID',
+      integrityCheck: 'ok',
+    },
+    sectorMetrics,
+    students,
+    recentEvents,
+  };
+}
+

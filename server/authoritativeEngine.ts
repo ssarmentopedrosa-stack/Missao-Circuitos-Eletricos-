@@ -50,6 +50,7 @@ export interface UserSessionState {
   uid: string;
   lives: number;
   score: number;
+  status: 'ACTIVE' | 'GAME_OVER' | 'VICTORY';
   completedSectors: Set<SectorId>;
   lastSubmissionTimestamp: number;
   version?: number;
@@ -64,6 +65,7 @@ export function getOrCreateSession(uid: string): UserSessionState {
     uid: persisted.uid,
     lives: persisted.lives,
     score: persisted.score,
+    status: persisted.status,
     completedSectors: new Set<SectorId>(persisted.completedSectors as SectorId[]),
     lastSubmissionTimestamp: persisted.lastActivityAt,
     version: persisted.version,
@@ -76,6 +78,7 @@ export function resetUserSession(uid: string): UserSessionState {
     uid: persisted.uid,
     lives: persisted.lives,
     score: persisted.score,
+    status: persisted.status,
     completedSectors: new Set<SectorId>(persisted.completedSectors as SectorId[]),
     lastSubmissionTimestamp: persisted.lastActivityAt,
     version: persisted.version,
@@ -264,6 +267,18 @@ export function submitQuestionAttempt(params: {
     }
     if (attempt.answered && attempt.result) {
       return JSON.parse(attempt.result) as AttemptSubmissionResult;
+    }
+
+    if (attempt.uid && uid && attempt.uid !== uid) {
+      logAudit({
+        category: 'FORBIDDEN',
+        uid,
+        attemptId,
+        requestId,
+        errorCode: 'FORBIDDEN',
+        details: `Cross-user question access: owned by ${attempt.uid}, requested by ${uid}`,
+      });
+      throw new Error('Tentativa pertence a outro usuário.');
     }
 
     const now = Date.now();

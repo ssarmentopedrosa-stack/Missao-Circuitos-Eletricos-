@@ -10,8 +10,25 @@ import {
   resetUserSession,
   pruneStaleAttempts,
 } from './server/authoritativeEngine';
-import { getDbHealth, SERVER_VERSION } from './server/persistenceEngine';
+import { getDbHealth, getTeacherDashboardOverview, SERVER_VERSION } from './server/persistenceEngine';
 import { SectorId } from './src/types';
+
+const TEACHER_PASSCODE = process.env.TEACHER_PASSCODE || 'prof-ares-2026';
+
+function requireTeacherAuth(req: Request, res: Response, next: () => void) {
+  const authHeader = req.headers['authorization'];
+  const teacherHeader = req.headers['x-teacher-key'];
+  const token = authHeader?.replace('Bearer ', '') || teacherHeader;
+
+  if (!token || token !== TEACHER_PASSCODE) {
+    res.status(401).json({
+      error: 'Acesso restrito: autorização de docente necessária para visualização da telemetria pedagógica.',
+      errorCode: 'UNAUTHORIZED',
+    });
+    return;
+  }
+  next();
+}
 
 // Rate Limiting Bucket Store (Red Team Test 38)
 interface RateLimitBucket {
@@ -255,6 +272,36 @@ async function startServer() {
   // Telemetry ingestion
   app.post('/api/telemetry/event', (req: Request, res: Response) => {
     res.status(202).json({ received: true, eventId: req.body?.id });
+  });
+
+  // ==========================================
+  // TEACHER & PEDAGOGICAL MONITORING ROUTES
+  // ==========================================
+
+  // Verify teacher access passcode
+  app.post('/api/teacher/verify-pin', (req: Request, res: Response) => {
+    const { pin } = req.body || {};
+    if (pin && pin === TEACHER_PASSCODE) {
+      res.json({ ok: true, token: TEACHER_PASSCODE });
+    } else {
+      res.status(401).json({ ok: false, error: 'Credencial docente incorreta.', errorCode: 'INVALID_PIN' });
+    }
+  });
+
+  // Get authoritative pedagogical dashboard (Protected)
+  app.get('/api/teacher/overview', requireTeacherAuth, (_req: Request, res: Response) => {
+    try {
+      const overview = getTeacherDashboardOverview();
+      res.json(overview);
+    } catch (err: unknown) {
+      const errInfo = classifyError(err);
+      res.status(errInfo.status).json({ error: errInfo.message, errorCode: errInfo.errorCode });
+    }
+  });
+
+  // Generic catch-all protection for administrative paths
+  app.all('/api/admin/*', (_req: Request, res: Response) => {
+    res.status(403).json({ error: 'Acesso restrito à administração da estação.', errorCode: 'FORBIDDEN' });
   });
 
   // ==========================================

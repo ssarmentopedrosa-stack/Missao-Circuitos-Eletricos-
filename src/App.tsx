@@ -14,6 +14,7 @@ import { AstronautCalculator } from './components/AstronautCalculator';
 import { CertificateModal } from './components/CertificateModal';
 import { AudioSettingsModal } from './components/AudioSettingsModal';
 import { TimeTrialMode } from './components/TimeTrialMode';
+import { TeacherDashboardModal } from './components/TeacherDashboardModal';
 import { sound } from './utils/audio';
 import { gameClient } from './utils/gameClient';
 
@@ -37,6 +38,7 @@ export default function App() {
   const [showCalculator, setShowCalculator] = useState<boolean>(false);
   const [showCertificate, setShowCertificate] = useState<boolean>(false);
   const [showAudioSettings, setShowAudioSettings] = useState<boolean>(false);
+  const [showTeacherModal, setShowTeacherModal] = useState<boolean>(false);
 
   // Stats & Progress
   const [score, setScore] = useState<number>(0);
@@ -273,6 +275,7 @@ export default function App() {
             onOpenCalculator={() => setShowCalculator(true)}
             onOpenAudioSettings={() => setShowAudioSettings(true)}
             onOpenTimeTrial={() => setGameState('TIME_TRIAL')}
+            onOpenTeacherModal={() => setShowTeacherModal(true)}
             soundEnabled={soundEnabled}
             onToggleSound={() => setSoundEnabled(!soundEnabled)}
             completedSectorsCount={completedSectors.length}
@@ -405,6 +408,14 @@ export default function App() {
       {/* Audio & Voice Settings Modal */}
       {showAudioSettings && (
         <AudioSettingsModal onClose={() => setShowAudioSettings(false)} />
+      )}
+
+      {/* Teacher Telemetry Dashboard Modal */}
+      {showTeacherModal && (
+        <TeacherDashboardModal
+          isOpen={showTeacherModal}
+          onClose={() => setShowTeacherModal(false)}
+        />
       )}
 
       {/* Footer Branding */}
