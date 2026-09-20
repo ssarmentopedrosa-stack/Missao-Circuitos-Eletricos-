@@ -5,7 +5,7 @@ import {
   EmergencySubmissionResult,
   SectorId,
 } from '../types';
-import { AuthClient } from './authClient';
+import { AuthClient, parseSafeJsonResponse } from './authClient';
 
 export type { EmergencySubmissionResult };
 
@@ -18,8 +18,10 @@ class AuthoritativeGameClient {
   private getHeaders(extraHeaders?: Record<string, string>): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...extraHeaders,
     };
+    if (extraHeaders) {
+      Object.assign(headers, extraHeaders);
+    }
     const token = AuthClient.getToken();
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
@@ -33,18 +35,21 @@ class AuthoritativeGameClient {
     uid: string
   ): Promise<{ attempt: QuestionAttempt; questionPublic: QuestionPublic }> {
     const requestId = generateRequestId('start_q');
-    const res = await fetch('/api/attempt/start', {
-      method: 'POST',
-      headers: this.getHeaders({ 'x-request-id': requestId }),
-      body: JSON.stringify({ questionId, sectorId, uid, requestId }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Falha ao iniciar questão' }));
-      throw new Error(err.error || `HTTP ${res.status}`);
+    let res: Response;
+    try {
+      res = await fetch('/api/attempt/start', {
+        method: 'POST',
+        headers: this.getHeaders({ 'x-request-id': requestId }),
+        body: JSON.stringify({ questionId, sectorId, uid, requestId }),
+      });
+    } catch {
+      throw new Error('Falha de conexão ao iniciar questão na estação.');
     }
 
-    return await res.json();
+    return await parseSafeJsonResponse<{ attempt: QuestionAttempt; questionPublic: QuestionPublic }>(
+      res,
+      'Falha ao iniciar questão.'
+    );
   }
 
   public async submitAnswer(params: {
@@ -55,44 +60,55 @@ class AuthoritativeGameClient {
     clientTimeLeft?: number;
   }): Promise<AttemptSubmissionResult> {
     const requestId = generateRequestId('sub_q');
-    const res = await fetch('/api/attempt/submit', {
-      method: 'POST',
-      headers: this.getHeaders({ 'x-request-id': requestId }),
-      body: JSON.stringify({ ...params, requestId }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Falha ao submeter resposta' }));
-      throw new Error(err.error || `HTTP ${res.status}`);
+    let res: Response;
+    try {
+      res = await fetch('/api/attempt/submit', {
+        method: 'POST',
+        headers: this.getHeaders({ 'x-request-id': requestId }),
+        body: JSON.stringify({ ...params, requestId }),
+      });
+    } catch {
+      throw new Error('Falha de conexão ao enviar resposta para a estação.');
     }
 
-    return await res.json();
+    return await parseSafeJsonResponse<AttemptSubmissionResult>(
+      res,
+      'Falha ao submeter resposta.'
+    );
   }
 
   public async getSession(uid: string): Promise<{ uid: string; lives: number; score: number }> {
-    const res = await fetch(`/api/user/session/${encodeURIComponent(uid)}`, {
-      headers: this.getHeaders(),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Falha ao obter sessão' }));
-      throw new Error(err.error || `HTTP ${res.status}`);
+    let res: Response;
+    try {
+      res = await fetch(`/api/user/session/${encodeURIComponent(uid)}`, {
+        headers: this.getHeaders(),
+      });
+    } catch {
+      throw new Error('Falha de conexão ao obter sessão da estação.');
     }
-    return await res.json();
+
+    return await parseSafeJsonResponse<{ uid: string; lives: number; score: number }>(
+      res,
+      'Falha ao obter sessão do usuário.'
+    );
   }
 
   public async resetSession(uid: string): Promise<{ lives: number; score: number }> {
-    const res = await fetch('/api/user/reset', {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify({ uid }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Falha ao reiniciar sessão' }));
-      throw new Error(err.error || `HTTP ${res.status}`);
+    let res: Response;
+    try {
+      res = await fetch('/api/user/reset', {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ uid }),
+      });
+    } catch {
+      throw new Error('Falha de conexão ao reiniciar sessão da estação.');
     }
 
-    return await res.json();
+    return await parseSafeJsonResponse<{ lives: number; score: number }>(
+      res,
+      'Falha ao reiniciar sessão.'
+    );
   }
 
   public async startEmergencyMission(
@@ -100,18 +116,21 @@ class AuthoritativeGameClient {
     uid: string
   ): Promise<{ attemptId: string; startedAt: number; deadlineAt: number; timeLimit: number }> {
     const requestId = generateRequestId('start_em');
-    const res = await fetch('/api/timetrial/start', {
-      method: 'POST',
-      headers: this.getHeaders({ 'x-request-id': requestId }),
-      body: JSON.stringify({ missionId, uid, requestId }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Falha ao iniciar missão de emergência' }));
-      throw new Error(err.error || `HTTP ${res.status}`);
+    let res: Response;
+    try {
+      res = await fetch('/api/timetrial/start', {
+        method: 'POST',
+        headers: this.getHeaders({ 'x-request-id': requestId }),
+        body: JSON.stringify({ missionId, uid, requestId }),
+      });
+    } catch {
+      throw new Error('Falha de conexão ao iniciar missão de emergência.');
     }
 
-    return await res.json();
+    return await parseSafeJsonResponse<{ attemptId: string; startedAt: number; deadlineAt: number; timeLimit: number }>(
+      res,
+      'Falha ao iniciar missão de emergência.'
+    );
   }
 
   public async submitEmergencyMission(params: {
@@ -122,18 +141,21 @@ class AuthoritativeGameClient {
     clientTimeLeft?: number;
   }): Promise<EmergencySubmissionResult> {
     const requestId = generateRequestId('sub_em');
-    const res = await fetch('/api/timetrial/submit', {
-      method: 'POST',
-      headers: this.getHeaders({ 'x-request-id': requestId }),
-      body: JSON.stringify({ ...params, requestId }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Falha ao submeter missão de emergência' }));
-      throw new Error(err.error || `HTTP ${res.status}`);
+    let res: Response;
+    try {
+      res = await fetch('/api/timetrial/submit', {
+        method: 'POST',
+        headers: this.getHeaders({ 'x-request-id': requestId }),
+        body: JSON.stringify({ ...params, requestId }),
+      });
+    } catch {
+      throw new Error('Falha de conexão ao submeter missão de emergência.');
     }
 
-    return await res.json();
+    return await parseSafeJsonResponse<EmergencySubmissionResult>(
+      res,
+      'Falha ao submeter missão de emergência.'
+    );
   }
 }
 

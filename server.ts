@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import {
@@ -686,6 +686,37 @@ async function startServer() {
   // Generic catch-all protection for administrative paths
   app.all('/api/admin/*', (_req: Request, res: Response) => {
     res.status(403).json({ error: 'Acesso restrito à administração da estação.', errorCode: 'FORBIDDEN' });
+  });
+
+  // Catch-all 404 for any unmatched /api/* route: GUARANTEES JSON (NEVER HTML)
+  app.all('/api/*', (req: Request, res: Response) => {
+    res.status(404).json({
+      error: `Endpoint ${req.method} ${req.path} não encontrado no servidor da estação orbital.`,
+      errorCode: 'ENDPOINT_NOT_FOUND',
+    });
+  });
+
+  // Express JSON Error Handler for malformed JSON bodies or unhandled API errors
+  app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) {
+      return next(err);
+    }
+    if (err instanceof SyntaxError && 'body' in err) {
+      res.status(400).json({
+        error: 'Requisição inválida: formato JSON malformado.',
+        errorCode: 'MALFORMED_JSON',
+      });
+      return;
+    }
+    if (req.path && req.path.startsWith('/api/')) {
+      console.error('[API Unhandled Error]', err);
+      res.status(500).json({
+        error: 'Erro interno no servidor da estação orbital.',
+        errorCode: 'INTERNAL_SERVER_ERROR',
+      });
+      return;
+    }
+    next(err);
   });
 
   // ==========================================

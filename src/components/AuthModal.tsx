@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Zap,
   Mail,
@@ -21,6 +21,24 @@ interface AuthModalProps {
 
 type AuthView = 'main' | 'login' | 'register' | 'forgot' | 'reset';
 
+function getFriendlyErrorMessage(err: any, fallback: string): string {
+  if (!err) return fallback;
+  const raw = typeof err === 'string' ? err : err.message || '';
+  if (!raw || typeof raw !== 'string') return fallback;
+  if (
+    raw.includes('Unexpected token') ||
+    raw.includes('is not valid JSON') ||
+    raw.includes('JSON.parse') ||
+    raw.includes('Failed to fetch') ||
+    raw.includes('NetworkError') ||
+    raw.includes('Load failed') ||
+    raw.includes('The page')
+  ) {
+    return 'Falha de comunicação com a estação orbital. Verifique sua conexão e tente novamente.';
+  }
+  return raw;
+}
+
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
   const [view, setView] = useState<AuthView>('main');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -35,12 +53,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
   const [resetToken, setResetToken] = useState<string>('');
   const [newPassword, setNewPassword] = useState<string>('');
 
-  if (!isOpen) return null;
-
   const resetErrors = () => {
     setErrorMessage(null);
     setSuccessMessage(null);
   };
+
+  // Garante que o modal abra sempre limpo, sem erros em vermelho prévios
+  useEffect(() => {
+    if (isOpen) {
+      resetErrors();
+    }
+  }, [isOpen, view]);
+
+  if (!isOpen) return null;
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,7 +105,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
       });
       onSuccess(res.user);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Falha ao registrar conta.');
+      setErrorMessage(getFriendlyErrorMessage(err, 'Falha ao registrar conta.'));
     } finally {
       setIsLoading(false);
     }
@@ -107,7 +132,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
       });
       onSuccess(res.user);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Não foi possível entrar. Verifique seu e-mail e sua senha.');
+      setErrorMessage(getFriendlyErrorMessage(err, 'Não foi possível entrar. Verifique seu e-mail e sua senha.'));
     } finally {
       setIsLoading(false);
     }
@@ -122,7 +147,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
       const res = await AuthClient.loginWithGoogle(googleIdentityCredential);
       onSuccess(res.user);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Falha ao autenticar com o Google.');
+      setErrorMessage(getFriendlyErrorMessage(err, 'Falha ao autenticar com o Google.'));
     } finally {
       setIsLoading(false);
     }
@@ -146,7 +171,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
         setView('reset');
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Falha ao solicitar recuperação.');
+      setErrorMessage(getFriendlyErrorMessage(err, 'Falha ao solicitar recuperação.'));
     } finally {
       setIsLoading(false);
     }
@@ -175,7 +200,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
       setView('login');
       setPassword('');
     } catch (err: any) {
-      setErrorMessage(err.message || 'Erro ao redefinir senha.');
+      setErrorMessage(getFriendlyErrorMessage(err, 'Erro ao redefinir senha.'));
     } finally {
       setIsLoading(false);
     }

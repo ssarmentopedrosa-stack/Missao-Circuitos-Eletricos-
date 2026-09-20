@@ -2,6 +2,64 @@ import { User } from '../types';
 
 const SESSION_TOKEN_KEY = 'ARES3_SESSION_TOKEN';
 
+/**
+ * Utilitário seguro para requisições e processamento de respostas HTTP da API.
+ * Garante que respostas text/html (erros de proxy, 404, 502, gateways) NUNCA sejam
+ * interpretadas por response.json(), prevenindo erros como "Unexpected token 'T'".
+ */
+export async function parseSafeJsonResponse<T = any>(
+  res: Response,
+  fallbackError: string = 'Falha na comunicação com o servidor da estação.'
+): Promise<T> {
+  const contentType = res.headers.get('content-type') || '';
+  const isJson = contentType.toLowerCase().includes('application/json');
+
+  if (!isJson) {
+    let bodySnippet = '';
+    try {
+      bodySnippet = (await res.text()).trim().slice(0, 150);
+    } catch {
+      // ignore
+    }
+    console.warn(`[AuthClient] Resposta não-JSON recebida (${res.status}):`, bodySnippet);
+
+    if (res.status === 401) {
+      throw new Error('Sessão expirada ou credenciais inválidas.');
+    }
+    if (res.status === 403) {
+      throw new Error('Acesso não autorizado.');
+    }
+    if (res.status === 404) {
+      throw new Error('Serviço temporariamente indisponível no servidor.');
+    }
+    if (res.status === 429) {
+      throw new Error('Muitas requisições (Rate Limit). Aguarde alguns instantes.');
+    }
+    if (res.status >= 500) {
+      throw new Error('Servidor da estação orbital temporariamente indisponível. Tente novamente em instantes.');
+    }
+
+    throw new Error(fallbackError);
+  }
+
+  let data: any;
+  try {
+    data = await res.json();
+  } catch (err) {
+    console.error('[AuthClient] Falha ao processar JSON da resposta:', err);
+    throw new Error(fallbackError);
+  }
+
+  if (!res.ok) {
+    const message = data?.error || data?.message || fallbackError;
+    const error = new Error(message);
+    (error as any).errorCode = data?.errorCode;
+    throw error;
+  }
+
+  return data as T;
+}
+
 export class AuthClient {
   public static getToken(): string | null {
     try {
@@ -56,8 +114,13 @@ export class AuthClient {
         return null;
       }
 
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.toLowerCase().includes('application/json')) {
+        return null;
+      }
+
       const data = await res.json();
-      return data.user as User;
+      return (data?.user as User) || null;
     } catch {
       return null;
     }
@@ -68,16 +131,21 @@ export class AuthClient {
     email: string;
     password: string;
   }): Promise<{ user: User; sessionToken: string }> {
-    const res = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Erro ao criar conta.');
+    let res: Response;
+    try {
+      res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+    } catch {
+      throw new Error('Falha de conexão com a estação orbital. Verifique sua rede.');
     }
+
+    const data = await parseSafeJsonResponse<{ user: User; sessionToken: string }>(
+      res,
+      'Não foi possível criar a conta. Tente novamente.'
+    );
 
     if (data.sessionToken) {
       this.setToken(data.sessionToken);
@@ -90,16 +158,21 @@ export class AuthClient {
     email: string;
     password: string;
   }): Promise<{ user: User; sessionToken: string }> {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Não foi possível entrar. Verifique seu e-mail e sua senha.');
+    let res: Response;
+    try {
+      res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+    } catch {
+      throw new Error('Falha de conexão com a estação orbital. Verifique sua rede.');
     }
+
+    const data = await parseSafeJsonResponse<{ user: User; sessionToken: string }>(
+      res,
+      'Não foi possível entrar. Verifique seu e-mail e sua senha.'
+    );
 
     if (data.sessionToken) {
       this.setToken(data.sessionToken);
@@ -109,16 +182,21 @@ export class AuthClient {
   }
 
   public static async loginWithGoogle(credential: string): Promise<{ user: User; sessionToken: string }> {
-    const res = await fetch('/api/auth/google', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ credential }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Falha ao autenticar com o Google.');
+    let res: Response;
+    try {
+      res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential }),
+      });
+    } catch {
+      throw new Error('Falha de conexão ao autenticar com o Google. Verifique sua rede.');
     }
+
+    const data = await parseSafeJsonResponse<{ user: User; sessionToken: string }>(
+      res,
+      'Falha ao autenticar com o Google.'
+    );
 
     if (data.sessionToken) {
       this.setToken(data.sessionToken);
@@ -141,31 +219,42 @@ export class AuthClient {
   }
 
   public static async forgotPassword(email: string): Promise<{ ok: boolean; message: string; resetToken?: string }> {
-    const res = await fetch('/api/auth/forgot-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
-    });
+    let res: Response;
+    try {
+      res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+    } catch {
+      throw new Error('Falha de conexão ao solicitar recuperação de senha.');
+    }
 
-    return await res.json();
+    return await parseSafeJsonResponse<{ ok: boolean; message: string; resetToken?: string }>(
+      res,
+      'Falha ao solicitar recuperação de senha.'
+    );
   }
 
   public static async resetPassword(params: {
     token: string;
     newPassword: string;
   }): Promise<{ ok: boolean; message: string }> {
-    const res = await fetch('/api/auth/reset-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Erro ao redefinir senha.');
+    let res: Response;
+    try {
+      res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+    } catch {
+      throw new Error('Falha de conexão ao redefinir senha.');
     }
 
-    return data;
+    return await parseSafeJsonResponse<{ ok: boolean; message: string }>(
+      res,
+      'Erro ao redefinir senha.'
+    );
   }
 
   public static async updateProfile(params: {
@@ -176,36 +265,44 @@ export class AuthClient {
     photoUrl?: string;
     onboardingCompleted?: boolean;
   }): Promise<User> {
-    const res = await fetch('/api/auth/profile', {
-      method: 'PUT',
-      headers: this.getHeaders(),
-      body: JSON.stringify(params),
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Erro ao atualizar perfil.');
+    let res: Response;
+    try {
+      res = await fetch('/api/auth/profile', {
+        method: 'PUT',
+        headers: this.getHeaders(),
+        body: JSON.stringify(params),
+      });
+    } catch {
+      throw new Error('Falha de conexão ao atualizar perfil.');
     }
 
-    return data.user as User;
+    const data = await parseSafeJsonResponse<{ user: User }>(
+      res,
+      'Erro ao atualizar perfil.'
+    );
+
+    return data.user;
   }
 
   // -------------------------------------------------------------
   // CLASSES & PEDAGOGICAL MONITORING (Phase 2)
   // -------------------------------------------------------------
   public static async joinClass(code: string): Promise<{ classItem: any; message: string }> {
-    const res = await fetch('/api/classes/join', {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify({ code: code.trim() }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Não foi possível entrar na turma. Verifique o código.');
+    let res: Response;
+    try {
+      res = await fetch('/api/classes/join', {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ code: code.trim() }),
+      });
+    } catch {
+      throw new Error('Falha de conexão ao ingressar na turma.');
     }
 
-    return data;
+    return await parseSafeJsonResponse<{ classItem: any; message: string }>(
+      res,
+      'Não foi possível entrar na turma. Verifique o código.'
+    );
   }
 
   public static async getStudentClasses(): Promise<any[]> {
@@ -214,6 +311,8 @@ export class AuthClient {
         headers: this.getHeaders(),
       });
       if (!res.ok) return [];
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.toLowerCase().includes('application/json')) return [];
       const data = await res.json();
       return data.classes || [];
     } catch {
@@ -237,16 +336,19 @@ export class AuthClient {
       headers['x-teacher-key'] = teacherToken;
     }
 
-    const res = await fetch(`/api/teacher/dashboard?${params.toString()}`, {
-      headers,
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Falha ao carregar dashboard pedagógico.');
+    let res: Response;
+    try {
+      res = await fetch(`/api/teacher/dashboard?${params.toString()}`, {
+        headers,
+      });
+    } catch {
+      throw new Error('Falha de conexão ao carregar dashboard pedagógico.');
     }
 
-    return data;
+    return await parseSafeJsonResponse<any>(
+      res,
+      'Falha ao carregar dashboard pedagógico.'
+    );
   }
 
   public static async getTeacherClasses(teacherToken?: string): Promise<any[]> {
@@ -256,13 +358,19 @@ export class AuthClient {
       headers['x-teacher-key'] = teacherToken;
     }
 
-    const res = await fetch('/api/teacher/classes', {
-      headers,
-    });
+    try {
+      const res = await fetch('/api/teacher/classes', {
+        headers,
+      });
 
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.classes || [];
+      if (!res.ok) return [];
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.toLowerCase().includes('application/json')) return [];
+      const data = await res.json();
+      return data.classes || [];
+    } catch {
+      return [];
+    }
   }
 
   public static async createTeacherClass(name: string, code?: string, teacherToken?: string): Promise<any> {
@@ -272,16 +380,21 @@ export class AuthClient {
       headers['x-teacher-key'] = teacherToken;
     }
 
-    const res = await fetch('/api/teacher/classes', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ name: name.trim(), code: code ? code.trim() : undefined }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Erro ao criar turma.');
+    let res: Response;
+    try {
+      res = await fetch('/api/teacher/classes', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name: name.trim(), code: code ? code.trim() : undefined }),
+      });
+    } catch {
+      throw new Error('Falha de conexão ao criar turma.');
     }
+
+    const data = await parseSafeJsonResponse<{ class: any }>(
+      res,
+      'Erro ao criar turma.'
+    );
 
     return data.class;
   }
@@ -293,16 +406,19 @@ export class AuthClient {
       headers['x-teacher-key'] = teacherToken;
     }
 
-    const res = await fetch(`/api/teacher/students/${encodeURIComponent(studentId)}/performance`, {
-      headers,
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Falha ao obter desempenho do aluno.');
+    let res: Response;
+    try {
+      res = await fetch(`/api/teacher/students/${encodeURIComponent(studentId)}/performance`, {
+        headers,
+      });
+    } catch {
+      throw new Error('Falha de conexão ao obter desempenho do aluno.');
     }
 
-    return data;
+    return await parseSafeJsonResponse<any>(
+      res,
+      'Falha ao obter desempenho do aluno.'
+    );
   }
 
   public static async getQuestionsAnalytics(teacherToken?: string): Promise<any> {
@@ -312,16 +428,19 @@ export class AuthClient {
       headers['x-teacher-key'] = teacherToken;
     }
 
-    const res = await fetch('/api/teacher/questions-analytics', {
-      headers,
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Falha ao obter análise de questões.');
+    let res: Response;
+    try {
+      res = await fetch('/api/teacher/questions-analytics', {
+        headers,
+      });
+    } catch {
+      throw new Error('Falha de conexão ao obter análise de questões.');
     }
 
-    return data;
+    return await parseSafeJsonResponse<any>(
+      res,
+      'Falha ao obter análise de questões.'
+    );
   }
 
   public static async getTeacherAttempts(classId?: string, limit: number = 50, teacherToken?: string): Promise<any[]> {
@@ -335,12 +454,18 @@ export class AuthClient {
     if (classId && classId !== 'all') params.append('classId', classId);
     params.append('limit', String(limit));
 
-    const res = await fetch(`/api/teacher/attempts?${params.toString()}`, {
-      headers,
-    });
+    try {
+      const res = await fetch(`/api/teacher/attempts?${params.toString()}`, {
+        headers,
+      });
 
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.attempts || [];
+      if (!res.ok) return [];
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.toLowerCase().includes('application/json')) return [];
+      const data = await res.json();
+      return data.attempts || [];
+    } catch {
+      return [];
+    }
   }
 }

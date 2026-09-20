@@ -226,6 +226,12 @@ export const TeacherDashboardModal: React.FC<TeacherDashboardModalProps> = ({
         body: JSON.stringify({ pin: pin.trim() }),
       });
 
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.toLowerCase().includes('application/json')) {
+        setAuthError('Serviço temporariamente indisponível no servidor.');
+        return;
+      }
+
       const data = await res.json();
       if (res.ok && data.ok && data.token) {
         setToken(data.token);
