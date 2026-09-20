@@ -10,24 +10,77 @@ import {
   resetUserSession,
   pruneStaleAttempts,
 } from './server/authoritativeEngine';
-import { getDbHealth, getTeacherDashboardOverview, SERVER_VERSION } from './server/persistenceEngine';
+import {
+  getDbHealth,
+  getTeacherDashboardOverview,
+  getTeacherDashboard,
+  getStudentPerformanceDetails,
+  getQuestionsAnalytics,
+  getTeacherAttemptsHistory,
+  createClass,
+  findClassesByTeacher,
+  findStudentClasses,
+  joinClass,
+  findSessionByToken,
+  deleteSession,
+  SERVER_VERSION,
+  UserSanitized,
+  UserSessionRecord,
+} from './server/persistenceEngine';
+import {
+  registerWithPassword,
+  loginWithPassword,
+  loginOrRegisterWithGoogle,
+  requestPasswordReset,
+  resetPasswordWithToken,
+  updateUserProfile,
+} from './server/authEngine';
 import { SectorId } from './src/types';
 
 const TEACHER_PASSCODE = process.env.TEACHER_PASSCODE || 'prof-ares-2026';
 
-function requireTeacherAuth(req: Request, res: Response, next: () => void) {
+function getAuthFromReq(req: Request): { session: UserSessionRecord; user: UserSanitized } | null {
   const authHeader = req.headers['authorization'];
-  const teacherHeader = req.headers['x-teacher-key'];
-  const token = authHeader?.replace('Bearer ', '') || teacherHeader;
-
-  if (!token || token !== TEACHER_PASSCODE) {
-    res.status(401).json({
-      error: 'Acesso restrito: autorização de docente necessária para visualização da telemetria pedagógica.',
-      errorCode: 'UNAUTHORIZED',
-    });
-    return;
+  let token: string | undefined;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7).trim();
+  } else if (req.headers['x-session-token']) {
+    token = String(req.headers['x-session-token']).trim();
   }
-  next();
+  if (!token) return null;
+  return findSessionByToken(token);
+}
+
+function requireTeacherAuth(req: Request, res: Response, next: () => void) {
+  const rawAuth = req.headers['authorization'];
+  const rawTeacher = req.headers['x-teacher-key'];
+  const authHeader = Array.isArray(rawAuth) ? rawAuth[0] : rawAuth;
+  const teacherHeader = Array.isArray(rawTeacher) ? rawTeacher[0] : rawTeacher;
+  const token = (authHeader ? authHeader.replace('Bearer ', '').trim() : '') || (teacherHeader ? teacherHeader.trim() : '');
+
+  if (token === TEACHER_PASSCODE) {
+    return next();
+  }
+
+  if (token) {
+    const sessionData = findSessionByToken(token);
+    if (sessionData) {
+      if (sessionData.user.role === 'teacher') {
+        return next();
+      }
+      // Usuário autenticado, porém com perfil de aluno tentando acessar área restrita
+      res.status(403).json({
+        error: 'Acesso restrito: este recurso é exclusivo para professores e docentes.',
+        errorCode: 'FORBIDDEN',
+      });
+      return;
+    }
+  }
+
+  res.status(401).json({
+    error: 'Acesso restrito: autorização de docente necessária para visualização da telemetria pedagógica.',
+    errorCode: 'UNAUTHORIZED',
+  });
 }
 
 // Rate Limiting Bucket Store (Red Team Test 38)
@@ -136,14 +189,229 @@ async function startServer() {
   app.get('/api/health', healthHandler);
 
   // ==========================================
+  // AUTHENTICATION & IDENTITY ROUTES (Phase 1)
+  // ==========================================
+
+  // Register new student account with email and password
+  app.post('/api/auth/register', (req: Request, res: Response) => {
+    try {
+      const { name, email, password, confirmPassword } = req.body || {};
+      if (confirmPassword !== undefined && confirmPassword !== password) {
+        res.status(400).json({ error: 'As senhas digitadas não coincidem.', errorCode: 'PASSWORD_MISMATCH' });
+        return;
+      }
+      const result = registerWithPassword({ name, email, password });
+      res.status(201).json({
+        user: result.user,
+        sessionToken: result.sessionToken,
+        token: result.sessionToken,
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Erro ao criar conta.', errorCode: 'REGISTRATION_ERROR' });
+    }
+  });
+
+  // Login with email and password
+  app.post('/api/auth/login', (req: Request, res: Response) => {
+    try {
+      const { email, password } = req.body || {};
+      const result = loginWithPassword({ email, password });
+      res.json({
+        user: result.user,
+        sessionToken: result.sessionToken,
+        token: result.sessionToken,
+      });
+    } catch (err: any) {
+      res.status(401).json({
+        error: err.message || 'Não foi possível entrar. Verifique seu e-mail e sua senha.',
+        errorCode: 'INVALID_CREDENTIALS',
+      });
+    }
+  });
+
+  // Authenticate with Google identity credential
+  app.post('/api/auth/google', async (req: Request, res: Response) => {
+    try {
+      const { credential } = req.body || {};
+      if (!credential) {
+        res.status(400).json({ error: 'Credencial do Google é obrigatória.', errorCode: 'MISSING_CREDENTIAL' });
+        return;
+      }
+      const result = await loginOrRegisterWithGoogle(credential);
+      res.json({
+        user: result.user,
+        sessionToken: result.sessionToken,
+        token: result.sessionToken,
+      });
+    } catch (err: any) {
+      res.status(401).json({ error: err.message || 'Falha ao autenticar com o Google.', errorCode: 'GOOGLE_AUTH_FAILED' });
+    }
+  });
+
+  // Get currently authenticated user profile
+  app.get(['/api/auth/me', '/api/me', '/api/student/profile'], (req: Request, res: Response) => {
+    const auth = getAuthFromReq(req);
+    if (!auth) {
+      res.status(401).json({ error: 'Sessão não autenticada.', errorCode: 'UNAUTHORIZED' });
+      return;
+    }
+    res.json({ user: auth.user });
+  });
+
+  // Student join class by invitation code
+  app.post('/api/classes/join', (req: Request, res: Response) => {
+    try {
+      const auth = getAuthFromReq(req);
+      const { code, studentId } = req.body || {};
+      const effectiveStudentId = auth ? auth.user.id : studentId;
+
+      if (!effectiveStudentId) {
+        res.status(401).json({ error: 'Aluno não identificado. Faça login para entrar em uma turma.', errorCode: 'UNAUTHORIZED' });
+        return;
+      }
+
+      if (!code) {
+        res.status(400).json({ error: 'Código da turma é obrigatório.', errorCode: 'INVALID_REQUEST' });
+        return;
+      }
+
+      const result = joinClass({ studentId: effectiveStudentId, code: String(code) });
+      res.json(result);
+    } catch (err: any) {
+      const isNotFound = err.message?.includes('inválido') || err.message?.includes('inativa');
+      res.status(isNotFound ? 404 : 400).json({
+        error: err.message || 'Falha ao ingressar na turma.',
+        errorCode: isNotFound ? 'CLASS_NOT_FOUND' : 'JOIN_CLASS_FAILED',
+      });
+    }
+  });
+
+  // Get student enrolled classes
+  app.get('/api/student/classes', (req: Request, res: Response) => {
+    const auth = getAuthFromReq(req);
+    const queryStudentId = req.query.studentId as string;
+    const effectiveStudentId = auth ? auth.user.id : queryStudentId;
+
+    if (!effectiveStudentId) {
+      res.status(401).json({ error: 'Aluno não identificado.', errorCode: 'UNAUTHORIZED' });
+      return;
+    }
+
+    const classes = findStudentClasses(effectiveStudentId);
+    res.json({ classes });
+  });
+
+  // Student own performance or teacher access (with IDOR protection)
+  app.get('/api/student/performance/:studentId', (req: Request, res: Response) => {
+    const { studentId } = req.params;
+    const auth = getAuthFromReq(req);
+    const rawTeacher = req.headers['x-teacher-key'];
+    const teacherKey = Array.isArray(rawTeacher) ? rawTeacher[0] : rawTeacher;
+    const isTeacher = (teacherKey && teacherKey === TEACHER_PASSCODE) || (auth && auth.user.role === 'teacher');
+
+    if (!isTeacher) {
+      // Se não for professor, DEVE ser o próprio aluno autenticado
+      if (!auth) {
+        res.status(401).json({ error: 'Autenticação necessária.', errorCode: 'UNAUTHORIZED' });
+        return;
+      }
+      if (auth.user.id !== studentId) {
+        res.status(403).json({
+          error: 'Acesso negado: você não tem permissão para visualizar o relatório pedagógico de outro aluno.',
+          errorCode: 'FORBIDDEN',
+        });
+        return;
+      }
+    }
+
+    const details = getStudentPerformanceDetails(studentId);
+    if (!details) {
+      res.status(404).json({ error: 'Aluno não encontrado.', errorCode: 'NOT_FOUND' });
+      return;
+    }
+
+    res.json(details);
+  });
+
+  // Terminate authenticated session
+  app.post('/api/auth/logout', (req: Request, res: Response) => {
+    const authHeader = req.headers['authorization'];
+    let token: string | undefined;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7).trim();
+    } else if (req.headers['x-session-token']) {
+      token = String(req.headers['x-session-token']).trim();
+    }
+    if (token) {
+      deleteSession(token);
+    }
+    res.json({ ok: true });
+  });
+
+  // Request password reset token (no user enumeration)
+  app.post('/api/auth/forgot-password', (req: Request, res: Response) => {
+    try {
+      const { email } = req.body || {};
+      const result = requestPasswordReset(email);
+      res.json({
+        ok: true,
+        message: 'Se o e-mail estiver cadastrado, as instruções para redefinição foram processadas.',
+        ...(result.resetToken ? { resetToken: result.resetToken } : {}),
+      });
+    } catch {
+      res.json({
+        ok: true,
+        message: 'Se o e-mail estiver cadastrado, as instruções para redefinição foram processadas.',
+      });
+    }
+  });
+
+  // Reset password using secure token
+  app.post('/api/auth/reset-password', (req: Request, res: Response) => {
+    try {
+      const { token, newPassword } = req.body || {};
+      resetPasswordWithToken({ token, newPassword });
+      res.json({ ok: true, message: 'Senha redefinida com sucesso.' });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Erro ao redefinir senha.', errorCode: 'INVALID_RESET_TOKEN' });
+    }
+  });
+
+  // Update authenticated student profile (name, grade, className, school, onboarding)
+  app.put('/api/auth/profile', (req: Request, res: Response) => {
+    const auth = getAuthFromReq(req);
+    if (!auth) {
+      res.status(401).json({ error: 'Sessão não autenticada.', errorCode: 'UNAUTHORIZED' });
+      return;
+    }
+    try {
+      const { name, school, grade, className, photoUrl, onboardingCompleted } = req.body || {};
+      const updatedUser = updateUserProfile(auth.user.id, {
+        name,
+        school,
+        grade,
+        className,
+        photoUrl,
+        onboardingCompleted,
+      });
+      res.json({ user: updatedUser });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Erro ao atualizar perfil.', errorCode: 'PROFILE_UPDATE_ERROR' });
+    }
+  });
+
+  // ==========================================
   // AUTHORITATIVE API ROUTES
   // ==========================================
 
   // Get or initialize user state (authoritative lives and score)
   app.get('/api/user/session/:uid', (req: Request, res: Response) => {
     try {
-      const { uid } = req.params;
-      const session = getOrCreateSession(uid);
+      const { uid: paramUid } = req.params;
+      const auth = getAuthFromReq(req);
+      // O userId da sessão autenticada tem precedência autoritativa absoluta
+      const effectiveUid = auth ? auth.user.id : paramUid;
+      const session = getOrCreateSession(effectiveUid);
       res.json({
         uid: session.uid,
         lives: session.lives,
@@ -159,8 +427,10 @@ async function startServer() {
   // Reset user session (upon GameOver restart or new game)
   app.post('/api/user/reset', (req: Request, res: Response) => {
     try {
+      const auth = getAuthFromReq(req);
       const { uid } = req.body;
-      const session = resetUserSession(uid || 'anonymous');
+      const effectiveUid = auth ? auth.user.id : (uid || 'anonymous');
+      const session = resetUserSession(effectiveUid);
       res.json({
         uid: session.uid,
         lives: session.lives,
@@ -175,8 +445,10 @@ async function startServer() {
   // Start a new question attempt (creates attemptId and authoritative deadlineAt)
   app.post('/api/attempt/start', (req: Request, res: Response) => {
     try {
+      const auth = getAuthFromReq(req);
       const { questionId, sectorId, uid, requestId: bodyReqId } = req.body;
       const requestId = (req.headers['x-request-id'] as string) || bodyReqId;
+      const effectiveUid = auth ? auth.user.id : (uid || 'astronaut');
 
       if (!questionId || !sectorId) {
         res.status(400).json({ error: 'questionId e sectorId são obrigatórios.', errorCode: 'INVALID_REQUEST' });
@@ -186,7 +458,7 @@ async function startServer() {
       const result = startQuestionAttempt(
         questionId,
         Number(sectorId) as SectorId,
-        uid || 'astronaut',
+        effectiveUid,
         requestId
       );
       res.json(result);
@@ -199,8 +471,10 @@ async function startServer() {
   // Submit answer for an attempt (authoritative check, idempotent, timer-safe)
   app.post('/api/attempt/submit', (req: Request, res: Response) => {
     try {
+      const auth = getAuthFromReq(req);
       const { attemptId, selectedOptionId, usedHintLevel, uid, clientTimeLeft, requestId: bodyReqId } = req.body;
       const requestId = (req.headers['x-request-id'] as string) || bodyReqId;
+      const effectiveUid = auth ? auth.user.id : (uid || 'astronaut');
 
       if (!attemptId || !selectedOptionId) {
         res.status(400).json({ error: 'attemptId e selectedOptionId são obrigatórios.', errorCode: 'INVALID_REQUEST' });
@@ -211,7 +485,7 @@ async function startServer() {
         attemptId,
         selectedOptionId,
         usedHintLevel: usedHintLevel || 0,
-        uid: uid || 'astronaut',
+        uid: effectiveUid,
         requestId,
         clientTimeLeft,
       });
@@ -226,15 +500,17 @@ async function startServer() {
   // Start an emergency mission attempt (Time Trial mode)
   app.post('/api/timetrial/start', (req: Request, res: Response) => {
     try {
+      const auth = getAuthFromReq(req);
       const { missionId, uid, requestId: bodyReqId } = req.body;
       const requestId = (req.headers['x-request-id'] as string) || bodyReqId;
+      const effectiveUid = auth ? auth.user.id : (uid || 'astronaut');
 
       if (!missionId) {
         res.status(400).json({ error: 'missionId é obrigatório.', errorCode: 'INVALID_REQUEST' });
         return;
       }
 
-      const result = startEmergencyAttempt(missionId, uid || 'astronaut', requestId);
+      const result = startEmergencyAttempt(missionId, effectiveUid, requestId);
       res.json(result);
     } catch (err: unknown) {
       const errInfo = classifyError(err);
@@ -245,8 +521,10 @@ async function startServer() {
   // Submit emergency mission answer (authoritative, combo-safe, idempotent)
   app.post('/api/timetrial/submit', (req: Request, res: Response) => {
     try {
+      const auth = getAuthFromReq(req);
       const { attemptId, selectedOptionId, uid, comboCount, clientTimeLeft, requestId: bodyReqId } = req.body;
       const requestId = (req.headers['x-request-id'] as string) || bodyReqId;
+      const effectiveUid = auth ? auth.user.id : (uid || 'astronaut');
 
       if (!attemptId || !selectedOptionId) {
         res.status(400).json({ error: 'attemptId e selectedOptionId são obrigatórios.', errorCode: 'INVALID_REQUEST' });
@@ -256,7 +534,7 @@ async function startServer() {
       const result = submitEmergencyAttempt({
         attemptId,
         selectedOptionId,
-        uid: uid || 'astronaut',
+        uid: effectiveUid,
         comboCount: comboCount || 0,
         requestId,
         clientTimeLeft,
@@ -288,11 +566,117 @@ async function startServer() {
     }
   });
 
-  // Get authoritative pedagogical dashboard (Protected)
+  // Get authoritative pedagogical dashboard overview (Legacy compatibility)
   app.get('/api/teacher/overview', requireTeacherAuth, (_req: Request, res: Response) => {
     try {
       const overview = getTeacherDashboardOverview();
       res.json(overview);
+    } catch (err: unknown) {
+      const errInfo = classifyError(err);
+      res.status(errInfo.status).json({ error: errInfo.message, errorCode: errInfo.errorCode });
+    }
+  });
+
+  // Get authoritative pedagogical dashboard with filters & 8 Official KPIs (Phase 2)
+  app.get('/api/teacher/dashboard', requireTeacherAuth, (req: Request, res: Response) => {
+    try {
+      const { classId, missionId, period } = req.query as {
+        classId?: string;
+        missionId?: string;
+        period?: 'all' | '7d' | '30d' | '180d';
+      };
+
+      const dashboard = getTeacherDashboard({ classId, missionId, period });
+      res.json(dashboard);
+    } catch (err: unknown) {
+      const errInfo = classifyError(err);
+      res.status(errInfo.status).json({ error: errInfo.message, errorCode: errInfo.errorCode });
+    }
+  });
+
+  // Get teacher students list with metrics
+  app.get('/api/teacher/students', requireTeacherAuth, (req: Request, res: Response) => {
+    try {
+      const { classId } = req.query as { classId?: string };
+      const dashboard = getTeacherDashboard({ classId });
+      res.json({ students: dashboard.students, total: dashboard.students.length });
+    } catch (err: unknown) {
+      const errInfo = classifyError(err);
+      res.status(errInfo.status).json({ error: errInfo.message, errorCode: errInfo.errorCode });
+    }
+  });
+
+  // Get student detailed performance for teacher
+  app.get('/api/teacher/students/:studentId/performance', requireTeacherAuth, (req: Request, res: Response) => {
+    try {
+      const { studentId } = req.params;
+      const details = getStudentPerformanceDetails(studentId);
+      if (!details) {
+        res.status(404).json({ error: 'Aluno não encontrado.', errorCode: 'NOT_FOUND' });
+        return;
+      }
+      res.json(details);
+    } catch (err: unknown) {
+      const errInfo = classifyError(err);
+      res.status(errInfo.status).json({ error: errInfo.message, errorCode: errInfo.errorCode });
+    }
+  });
+
+  // Get attempt history with status filters
+  app.get('/api/teacher/attempts', requireTeacherAuth, (req: Request, res: Response) => {
+    try {
+      const { classId, limit } = req.query as { classId?: string; limit?: string };
+      const parsedLimit = limit ? parseInt(limit, 10) : 50;
+      const attempts = getTeacherAttemptsHistory({ classId, limit: parsedLimit });
+      res.json({ attempts, total: attempts.length });
+    } catch (err: unknown) {
+      const errInfo = classifyError(err);
+      res.status(errInfo.status).json({ error: errInfo.message, errorCode: errInfo.errorCode });
+    }
+  });
+
+  // Get questions analytics (error & success rates, questions needing review)
+  app.get('/api/teacher/questions-analytics', requireTeacherAuth, (_req: Request, res: Response) => {
+    try {
+      const analytics = getQuestionsAnalytics();
+      res.json(analytics);
+    } catch (err: unknown) {
+      const errInfo = classifyError(err);
+      res.status(errInfo.status).json({ error: errInfo.message, errorCode: errInfo.errorCode });
+    }
+  });
+
+  // Teacher create new class
+  app.post('/api/teacher/classes', requireTeacherAuth, (req: Request, res: Response) => {
+    try {
+      const auth = getAuthFromReq(req);
+      const { name, code } = req.body || {};
+      const teacherId = auth ? auth.user.id : 'prof_ares';
+
+      if (!name || String(name).trim().length === 0) {
+        res.status(400).json({ error: 'Nome da turma é obrigatório.', errorCode: 'INVALID_REQUEST' });
+        return;
+      }
+
+      const newClass = createClass({
+        teacherId,
+        name: String(name),
+        code: code ? String(code) : undefined,
+      });
+
+      res.json({ class: newClass, ok: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Falha ao criar turma.', errorCode: 'CREATE_CLASS_FAILED' });
+    }
+  });
+
+  // Teacher list owned classes
+  app.get('/api/teacher/classes', requireTeacherAuth, (req: Request, res: Response) => {
+    try {
+      const auth = getAuthFromReq(req);
+      const teacherId = auth ? auth.user.id : 'prof_ares';
+      const classes = findClassesByTeacher(teacherId);
+      res.json({ classes });
     } catch (err: unknown) {
       const errInfo = classifyError(err);
       res.status(errInfo.status).json({ error: errInfo.message, errorCode: errInfo.errorCode });

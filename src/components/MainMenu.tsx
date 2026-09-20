@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Play, BookOpen, Trophy, HelpCircle, Zap, Sparkles, Volume2, VolumeX, ShieldCheck, Atom, User, Edit2, Check, GraduationCap } from 'lucide-react';
+import { Play, BookOpen, Trophy, HelpCircle, Zap, Sparkles, Volume2, VolumeX, ShieldCheck, Atom, User as UserIcon, Edit2, Check, GraduationCap, BarChart2, LogOut } from 'lucide-react';
 import { TigraoMascot } from './TigraoMascot';
 import { sound } from '../utils/audio';
+import { User } from '../types';
 
 interface MainMenuProps {
   playerName: string;
+  currentUser?: User | null;
   onUpdatePlayerName: (name: string) => void;
   onStartGame: () => void;
   onOpenHowToPlay: () => void;
@@ -15,6 +17,8 @@ interface MainMenuProps {
   onOpenAudioSettings?: () => void;
   onOpenTimeTrial?: () => void;
   onOpenTeacherModal?: () => void;
+  onOpenStudentPerformance?: () => void;
+  onLogout?: () => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
   completedSectorsCount: number;
@@ -22,6 +26,7 @@ interface MainMenuProps {
 
 export const MainMenu: React.FC<MainMenuProps> = ({
   playerName,
+  currentUser,
   onUpdatePlayerName,
   onStartGame,
   onOpenHowToPlay,
@@ -32,6 +37,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   onOpenAudioSettings,
   onOpenTimeTrial,
   onOpenTeacherModal,
+  onOpenStudentPerformance,
+  onLogout,
   soundEnabled,
   onToggleSound,
   completedSectorsCount,
@@ -99,43 +106,68 @@ export const MainMenu: React.FC<MainMenuProps> = ({
 
         {/* Mascot Center Showcase & Astronaut Name Config */}
         <div className="relative z-10 max-w-md mx-auto mb-6 space-y-4">
-          {/* Astronaut Name Pill */}
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-950/90 border border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.2)]">
-            <User className="w-4 h-4 text-cyan-400" />
-            <span className="text-xs font-mono text-cyan-300 font-bold uppercase">Astronauta:</span>
-            {isEditingName ? (
-              <form onSubmit={handleSaveName} className="flex items-center gap-1.5">
-                <input
-                  type="text"
-                  value={tempName}
-                  onChange={(e) => setTempName(e.target.value)}
-                  className="bg-slate-900 border border-cyan-400 rounded-lg px-2.5 py-0.5 text-xs text-white font-bold font-mono outline-none max-w-[140px]"
-                  placeholder="Seu nome"
-                  autoFocus
-                  maxLength={24}
-                />
-                <button
-                  type="submit"
-                  className="p-1 rounded-md bg-cyan-500 text-slate-950 hover:bg-cyan-400 cursor-pointer"
-                  title="Salvar Nome"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                </button>
-              </form>
-            ) : (
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-white font-mono bg-cyan-950/80 px-2.5 py-0.5 rounded-lg border border-cyan-500/30">
-                  {playerName}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => { setTempName(playerName); setIsEditingName(true); }}
-                  className="p-1 text-slate-400 hover:text-cyan-300 transition-colors cursor-pointer"
-                  title="Alterar Nome do Astronauta"
-                >
-                  <Edit2 className="w-3 h-3" />
-                </button>
-              </div>
+          {/* Astronaut Name Pill & Performance Actions */}
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-950/90 border border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.2)]">
+              <UserIcon className="w-4 h-4 text-cyan-400" />
+              <span className="text-xs font-mono text-cyan-300 font-bold uppercase">Astronauta:</span>
+              {isEditingName ? (
+                <form onSubmit={handleSaveName} className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={tempName}
+                    onChange={(e) => setTempName(e.target.value)}
+                    className="bg-slate-900 border border-cyan-400 rounded-lg px-2.5 py-0.5 text-xs text-white font-bold font-mono outline-none max-w-[140px]"
+                    placeholder="Seu nome"
+                    autoFocus
+                    maxLength={24}
+                  />
+                  <button
+                    type="submit"
+                    className="p-1 rounded-md bg-cyan-500 text-slate-950 hover:bg-cyan-400 cursor-pointer"
+                    title="Salvar Nome"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                  </button>
+                </form>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-white font-mono bg-cyan-950/80 px-2.5 py-0.5 rounded-lg border border-cyan-500/30">
+                    {playerName}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setTempName(playerName); setIsEditingName(true); }}
+                    className="p-1 text-slate-400 hover:text-cyan-300 transition-colors cursor-pointer"
+                    title="Alterar Nome do Astronauta"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {onOpenStudentPerformance && (
+              <button
+                type="button"
+                onClick={() => { sound.playClick(); onOpenStudentPerformance(); }}
+                className="px-3 py-2 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-cyan-500/40 text-cyan-400 hover:text-cyan-300 text-xs font-mono font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm hover:scale-105"
+                title="Ver estatísticas e telemetria pessoal"
+              >
+                <BarChart2 className="w-3.5 h-3.5" />
+                <span>Meu Desempenho</span>
+              </button>
+            )}
+
+            {onLogout && currentUser && (
+              <button
+                type="button"
+                onClick={() => { sound.playClick(); onLogout(); }}
+                className="p-2 rounded-2xl bg-slate-900/90 hover:bg-rose-950/40 border border-slate-700 hover:border-rose-500/40 text-slate-400 hover:text-rose-400 text-xs transition-colors cursor-pointer"
+                title="Encerrar sessão da conta"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
             )}
           </div>
 

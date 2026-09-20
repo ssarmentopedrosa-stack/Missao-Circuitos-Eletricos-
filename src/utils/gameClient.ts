@@ -5,6 +5,7 @@ import {
   EmergencySubmissionResult,
   SectorId,
 } from '../types';
+import { AuthClient } from './authClient';
 
 export type { EmergencySubmissionResult };
 
@@ -14,6 +15,18 @@ function generateRequestId(prefix: string): string {
 }
 
 class AuthoritativeGameClient {
+  private getHeaders(extraHeaders?: Record<string, string>): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...extraHeaders,
+    };
+    const token = AuthClient.getToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  }
+
   public async startQuestion(
     questionId: string,
     sectorId: SectorId,
@@ -22,10 +35,7 @@ class AuthoritativeGameClient {
     const requestId = generateRequestId('start_q');
     const res = await fetch('/api/attempt/start', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-request-id': requestId,
-      },
+      headers: this.getHeaders({ 'x-request-id': requestId }),
       body: JSON.stringify({ questionId, sectorId, uid, requestId }),
     });
 
@@ -47,10 +57,7 @@ class AuthoritativeGameClient {
     const requestId = generateRequestId('sub_q');
     const res = await fetch('/api/attempt/submit', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-request-id': requestId,
-      },
+      headers: this.getHeaders({ 'x-request-id': requestId }),
       body: JSON.stringify({ ...params, requestId }),
     });
 
@@ -63,7 +70,9 @@ class AuthoritativeGameClient {
   }
 
   public async getSession(uid: string): Promise<{ uid: string; lives: number; score: number }> {
-    const res = await fetch(`/api/user/session/${encodeURIComponent(uid)}`);
+    const res = await fetch(`/api/user/session/${encodeURIComponent(uid)}`, {
+      headers: this.getHeaders(),
+    });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Falha ao obter sessão' }));
       throw new Error(err.error || `HTTP ${res.status}`);
@@ -74,7 +83,7 @@ class AuthoritativeGameClient {
   public async resetSession(uid: string): Promise<{ lives: number; score: number }> {
     const res = await fetch('/api/user/reset', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeaders(),
       body: JSON.stringify({ uid }),
     });
 
@@ -93,10 +102,7 @@ class AuthoritativeGameClient {
     const requestId = generateRequestId('start_em');
     const res = await fetch('/api/timetrial/start', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-request-id': requestId,
-      },
+      headers: this.getHeaders({ 'x-request-id': requestId }),
       body: JSON.stringify({ missionId, uid, requestId }),
     });
 
@@ -118,10 +124,7 @@ class AuthoritativeGameClient {
     const requestId = generateRequestId('sub_em');
     const res = await fetch('/api/timetrial/submit', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-request-id': requestId,
-      },
+      headers: this.getHeaders({ 'x-request-id': requestId }),
       body: JSON.stringify({ ...params, requestId }),
     });
 

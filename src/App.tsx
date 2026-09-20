@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { SectorId, GameStateData } from './types';
+import { SectorId, GameStateData, User } from './types';
 import { MainMenu } from './components/MainMenu';
 import { IntroStory } from './components/IntroStory';
 import { StationMap } from './components/StationMap';
@@ -15,8 +15,13 @@ import { CertificateModal } from './components/CertificateModal';
 import { AudioSettingsModal } from './components/AudioSettingsModal';
 import { TimeTrialMode } from './components/TimeTrialMode';
 import { TeacherDashboardModal } from './components/TeacherDashboardModal';
+import { AuthModal } from './components/AuthModal';
+import { OnboardingModal } from './components/OnboardingModal';
+import { StudentPerformanceModal } from './components/StudentPerformanceModal';
 import { sound } from './utils/audio';
 import { gameClient } from './utils/gameClient';
+import { AuthClient } from './utils/authClient';
+import { Zap } from 'lucide-react';
 
 const STORAGE_KEY = 'ARES3_ORBITAL_CIRCUITS_SAVE';
 const MAX_LIVES = 5;
@@ -26,6 +31,13 @@ export default function App() {
   const [gameState, setGameState] = useState<GameStateData['status']>('MENU');
   const [activeSectorId, setActiveSectorId] = useState<SectorId | null>(null);
   
+  // Authentication & Identity State (Phase 1 & Phase 2)
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+  const [showOnboardingModal, setShowOnboardingModal] = useState<boolean>(false);
+  const [showStudentPerformance, setShowStudentPerformance] = useState<boolean>(false);
+
   // Player Astronaut Identity & Lives (5 Lives System)
   const [playerName, setPlayerName] = useState<string>('Astronauta');
   const [lives, setLives] = useState<number>(MAX_LIVES);
@@ -53,13 +65,63 @@ export default function App() {
   const [startTime, setStartTime] = useState<number>(Date.now());
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
+  // Check Authenticated Session on Application Startup
+  useEffect(() => {
+    let isMounted = true;
+    async function verifyAuth() {
+      try {
+        const user = await AuthClient.getMe();
+        if (!isMounted) return;
+
+        if (user) {
+          setCurrentUser(user);
+          if (user.name) setPlayerName(user.name);
+          if (!user.onboardingCompleted) {
+            setShowOnboardingModal(true);
+          }
+          // Sincroniza estado de sessão autoritativa do servidor
+          try {
+            const serverSession = await gameClient.getSession(user.id);
+            if (serverSession && isMounted) {
+              if (typeof serverSession.lives === 'number') {
+                setLives(Math.max(0, Math.min(MAX_LIVES, serverSession.lives)));
+              }
+              if (typeof serverSession.score === 'number') {
+                setScore(serverSession.score);
+              }
+            }
+          } catch {
+            // fallback silencioso
+          }
+        } else {
+          setCurrentUser(null);
+          setShowAuthModal(true);
+        }
+      } catch {
+        if (isMounted) {
+          setCurrentUser(null);
+          setShowAuthModal(true);
+        }
+      } finally {
+        if (isMounted) {
+          setIsCheckingAuth(false);
+        }
+      }
+    }
+
+    verifyAuth();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Load Saved Game on Mount
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const data = JSON.parse(saved);
-        if (data.playerName) setPlayerName(data.playerName);
+        if (data.playerName && !currentUser) setPlayerName(data.playerName);
         if (typeof data.lives === 'number') setLives(Math.min(MAX_LIVES, Math.max(1, data.lives)));
         if (data.score) setScore(data.score);
         if (data.completedSectors) setCompletedSectors(data.completedSectors);
@@ -70,7 +132,7 @@ export default function App() {
     } catch {
       // ignore
     }
-  }, []);
+  }, [currentUser]);
 
   // Save Progress to localStorage
   useEffect(() => {
@@ -244,6 +306,51 @@ export default function App() {
     }
   };
 
+  const handleAuthSuccess = (user: User) => {
+    setCurrentUser(user);
+    if (user.name) setPlayerName(user.name);
+    setShowAuthModal(false);
+    if (!user.onboardingCompleted) {
+      setShowOnboardingModal(true);
+    }
+    // Sincroniza progresso autoritativo
+    gameClient.getSession(user.id).then((sess) => {
+      if (sess) {
+        if (typeof sess.lives === 'number') setLives(sess.lives);
+        if (typeof sess.score === 'number') setScore(sess.score);
+      }
+    }).catch(() => {});
+  };
+
+  const handleOnboardingComplete = (updated: User) => {
+    setCurrentUser(updated);
+    if (updated.name) setPlayerName(updated.name);
+    setShowOnboardingModal(false);
+  };
+
+  const handleLogout = async () => {
+    await AuthClient.logout();
+    setCurrentUser(null);
+    setShowStudentPerformance(false);
+    setGameState('MENU');
+    setShowAuthModal(true);
+  };
+
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen w-full bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 animate-pulse">
+            <Zap className="w-7 h-7 text-cyan-400" />
+          </div>
+          <p className="font-mono text-xs uppercase tracking-widest text-cyan-300">
+            INICIALIZANDO TELEMETRIA ORBITAL...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen w-full bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-cyan-500 selection:text-slate-950 font-sans relative overflow-x-hidden">
       {/* Background Starfield and Galactic Ambient Dust */}
@@ -266,6 +373,7 @@ export default function App() {
         {gameState === 'MENU' && (
           <MainMenu
             playerName={playerName}
+            currentUser={currentUser}
             onUpdatePlayerName={setPlayerName}
             onStartGame={handleStartGame}
             onOpenHowToPlay={() => setShowHowToPlay(true)}
@@ -276,6 +384,8 @@ export default function App() {
             onOpenAudioSettings={() => setShowAudioSettings(true)}
             onOpenTimeTrial={() => setGameState('TIME_TRIAL')}
             onOpenTeacherModal={() => setShowTeacherModal(true)}
+            onOpenStudentPerformance={() => setShowStudentPerformance(true)}
+            onLogout={handleLogout}
             soundEnabled={soundEnabled}
             onToggleSound={() => setSoundEnabled(!soundEnabled)}
             completedSectorsCount={completedSectors.length}
@@ -415,6 +525,57 @@ export default function App() {
         <TeacherDashboardModal
           isOpen={showTeacherModal}
           onClose={() => setShowTeacherModal(false)}
+        />
+      )}
+
+      {/* Student Authentication Modal */}
+      {showAuthModal && (
+        <AuthModal
+          isOpen={showAuthModal}
+          onSuccess={handleAuthSuccess}
+        />
+      )}
+
+      {/* New Student Onboarding Modal */}
+      {showOnboardingModal && currentUser && (
+        <OnboardingModal
+          user={currentUser}
+          isOpen={showOnboardingModal}
+          onComplete={handleOnboardingComplete}
+        />
+      )}
+
+      {/* Student Personal Performance Telemetry Modal */}
+      {showStudentPerformance && currentUser && (
+        <StudentPerformanceModal
+          isOpen={showStudentPerformance}
+          onClose={() => setShowStudentPerformance(false)}
+          user={currentUser}
+          gameState={{
+            status: gameState,
+            playerName,
+            lives,
+            maxLives: MAX_LIVES,
+            currentSectorId: activeSectorId,
+            currentQuestionIndex: 0,
+            score,
+            streak,
+            maxStreak,
+            stationIntegrity,
+            correctAnswersCount,
+            wrongAnswersCount,
+            timeOutCount: 0,
+            hintsUsedCount,
+            completedSectors,
+            unlockedAchievements,
+            startTime,
+            soundEnabled,
+          }}
+          onUserUpdate={(updated) => {
+            setCurrentUser(updated);
+            if (updated.name) setPlayerName(updated.name);
+          }}
+          onLogout={handleLogout}
         />
       )}
 

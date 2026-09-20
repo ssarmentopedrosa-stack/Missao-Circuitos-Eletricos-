@@ -319,3 +319,44 @@ export interface GameStateData {
   endTime?: number;
   soundEnabled: boolean;
 }
+
+export interface User {
+  id: string;
+  name: string;
+  email?: string;
+  photoUrl?: string;
+  role: 'student' | 'teacher';
+  provider: 'password' | 'google';
+  providerId?: string;
+  school?: string;
+  grade?: string;
+  className?: string;
+  createdAt: number;
+  lastLoginAt: number;
+  lastActivityAt: number;
+  onboardingCompleted: boolean;
+  legacyUid?: string;
+}
+
+export interface ClassItem {
+  id: string;
+  teacherId: string;
+  name: string;
+  code: string;
+  createdAt: number;
+  active: boolean;
+  studentCount?: number;
+}
+
+export interface TeacherDashboardKpis {
+  totalEnrolled: number;
+  totalParticipated: number;
+  totalPending: number;
+  averageScore: number;
+  accuracyPercentage: number;
+  averageResponseTimeSeconds: number;
+  highestScore: number;
+  lowestScore: number;
+}
+
+
