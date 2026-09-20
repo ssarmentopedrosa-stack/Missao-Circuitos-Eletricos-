@@ -228,7 +228,7 @@ export const TeacherDashboardModal: React.FC<TeacherDashboardModalProps> = ({
 
       const contentType = res.headers.get('content-type') || '';
       if (!contentType.toLowerCase().includes('application/json')) {
-        setAuthError('Serviço temporariamente indisponível no servidor.');
+        setAuthError(`Resposta inesperada do servidor (${res.status} ${res.statusText}).`);
         return;
       }
 

@@ -17,26 +17,31 @@ export async function parseSafeJsonResponse<T = any>(
   if (!isJson) {
     let bodySnippet = '';
     try {
-      bodySnippet = (await res.text()).trim().slice(0, 150);
+      bodySnippet = (await res.text()).trim().slice(0, 200);
     } catch {
       // ignore
     }
-    console.warn(`[AuthClient] Resposta não-JSON recebida (${res.status}):`, bodySnippet);
+    console.warn(`[AuthClient] Resposta não-JSON recebida (Status ${res.status} para ${res.url}):`, bodySnippet);
+
+    // Identificação de interceptação de segurança/cookies do proxy de hospedagem
+    if (bodySnippet.includes('__cookie_check') || bodySnippet.includes('aistudio_auth_flow') || bodySnippet.includes('Action required to load your app')) {
+      throw new Error('Bloqueio de cookies de segurança pelo navegador/hosting. Se estiver em aba anônima, permita os cookies ou abra a aplicação em uma nova aba.');
+    }
 
     if (res.status === 401) {
       throw new Error('Sessão expirada ou credenciais inválidas.');
     }
     if (res.status === 403) {
-      throw new Error('Acesso não autorizado.');
+      throw new Error('Acesso não autorizado ao recurso.');
     }
     if (res.status === 404) {
-      throw new Error('Serviço temporariamente indisponível no servidor.');
+      throw new Error(`Rota ou recurso não encontrado no servidor (404 Not Found): ${res.url || 'API'}`);
     }
     if (res.status === 429) {
       throw new Error('Muitas requisições (Rate Limit). Aguarde alguns instantes.');
     }
     if (res.status >= 500) {
-      throw new Error('Servidor da estação orbital temporariamente indisponível. Tente novamente em instantes.');
+      throw new Error(`Falha no servidor da estação orbital (${res.status}). Tente novamente em instantes.`);
     }
 
     throw new Error(fallbackError);
