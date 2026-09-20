@@ -1,4 +1,5 @@
 import { User } from '../types';
+import { getApiUrl } from './apiConfig';
 
 const SESSION_TOKEN_KEY = 'ARES3_SESSION_TOKEN';
 
@@ -106,7 +107,7 @@ export class AuthClient {
     if (!token) return null;
 
     try {
-      const res = await fetch('/api/auth/me', {
+      const res = await fetch(getApiUrl('/api/auth/me'), {
         headers: this.getHeaders(),
       });
 
@@ -138,7 +139,7 @@ export class AuthClient {
   }): Promise<{ user: User; sessionToken: string }> {
     let res: Response;
     try {
-      res = await fetch('/api/auth/register', {
+      res = await fetch(getApiUrl('/api/auth/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
@@ -165,7 +166,7 @@ export class AuthClient {
   }): Promise<{ user: User; sessionToken: string }> {
     let res: Response;
     try {
-      res = await fetch('/api/auth/login', {
+      res = await fetch(getApiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
@@ -189,7 +190,7 @@ export class AuthClient {
   public static async loginWithGoogle(credential: string): Promise<{ user: User; sessionToken: string }> {
     let res: Response;
     try {
-      res = await fetch('/api/auth/google', {
+      res = await fetch(getApiUrl('/api/auth/google'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ credential }),
@@ -212,7 +213,7 @@ export class AuthClient {
 
   public static async logout(): Promise<void> {
     try {
-      await fetch('/api/auth/logout', {
+      await fetch(getApiUrl('/api/auth/logout'), {
         method: 'POST',
         headers: this.getHeaders(),
       });
@@ -226,7 +227,7 @@ export class AuthClient {
   public static async forgotPassword(email: string): Promise<{ ok: boolean; message: string; resetToken?: string }> {
     let res: Response;
     try {
-      res = await fetch('/api/auth/forgot-password', {
+      res = await fetch(getApiUrl('/api/auth/forgot-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -247,7 +248,7 @@ export class AuthClient {
   }): Promise<{ ok: boolean; message: string }> {
     let res: Response;
     try {
-      res = await fetch('/api/auth/reset-password', {
+      res = await fetch(getApiUrl('/api/auth/reset-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
@@ -272,7 +273,7 @@ export class AuthClient {
   }): Promise<User> {
     let res: Response;
     try {
-      res = await fetch('/api/auth/profile', {
+      res = await fetch(getApiUrl('/api/auth/profile'), {
         method: 'PUT',
         headers: this.getHeaders(),
         body: JSON.stringify(params),
@@ -295,7 +296,7 @@ export class AuthClient {
   public static async joinClass(code: string): Promise<{ classItem: any; message: string }> {
     let res: Response;
     try {
-      res = await fetch('/api/classes/join', {
+      res = await fetch(getApiUrl('/api/classes/join'), {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({ code: code.trim() }),
@@ -312,7 +313,7 @@ export class AuthClient {
 
   public static async getStudentClasses(): Promise<any[]> {
     try {
-      const res = await fetch('/api/student/classes', {
+      const res = await fetch(getApiUrl('/api/student/classes'), {
         headers: this.getHeaders(),
       });
       if (!res.ok) return [];
@@ -343,7 +344,7 @@ export class AuthClient {
 
     let res: Response;
     try {
-      res = await fetch(`/api/teacher/dashboard?${params.toString()}`, {
+      res = await fetch(getApiUrl(`/api/teacher/dashboard?${params.toString()}`), {
         headers,
       });
     } catch {
@@ -364,7 +365,7 @@ export class AuthClient {
     }
 
     try {
-      const res = await fetch('/api/teacher/classes', {
+      const res = await fetch(getApiUrl('/api/teacher/classes'), {
         headers,
       });
 
@@ -387,7 +388,7 @@ export class AuthClient {
 
     let res: Response;
     try {
-      res = await fetch('/api/teacher/classes', {
+      res = await fetch(getApiUrl('/api/teacher/classes'), {
         method: 'POST',
         headers,
         body: JSON.stringify({ name: name.trim(), code: code ? code.trim() : undefined }),
@@ -413,7 +414,7 @@ export class AuthClient {
 
     let res: Response;
     try {
-      res = await fetch(`/api/teacher/students/${encodeURIComponent(studentId)}/performance`, {
+      res = await fetch(getApiUrl(`/api/teacher/students/${encodeURIComponent(studentId)}/performance`), {
         headers,
       });
     } catch {
@@ -435,7 +436,7 @@ export class AuthClient {
 
     let res: Response;
     try {
-      res = await fetch('/api/teacher/questions-analytics', {
+      res = await fetch(getApiUrl('/api/teacher/questions-analytics'), {
         headers,
       });
     } catch {
@@ -460,7 +461,7 @@ export class AuthClient {
     params.append('limit', String(limit));
 
     try {
-      const res = await fetch(`/api/teacher/attempts?${params.toString()}`, {
+      const res = await fetch(getApiUrl(`/api/teacher/attempts?${params.toString()}`), {
         headers,
       });
 

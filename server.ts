@@ -145,6 +145,42 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Configuração de CORS para permitir requisições do frontend Vercel e ambientes locais
+  const allowedOrigins = [
+    'https://missao-circuitos-eletricos.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:5173',
+  ];
+  if (process.env.ALLOWED_ORIGIN) {
+    allowedOrigins.push(process.env.ALLOWED_ORIGIN);
+  }
+
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const origin = req.headers.origin;
+    if (origin) {
+      const isAllowed =
+        allowedOrigins.includes(origin) ||
+        /^https:\/\/missao-circuitos-eletricos.*\.vercel\.app$/.test(origin);
+
+      if (isAllowed) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.setHeader(
+          'Access-Control-Allow-Headers',
+          'Content-Type, Authorization, x-session-token, x-teacher-key, x-request-id, x-student-id, x-device-id'
+        );
+      }
+    }
+
+    if (req.method === 'OPTIONS') {
+      res.status(204).end();
+      return;
+    }
+
+    next();
+  });
+
   // Apply Rate Limiter to all /api/ routes
   app.use('/api', rateLimiter(120, 60 * 1000));
 

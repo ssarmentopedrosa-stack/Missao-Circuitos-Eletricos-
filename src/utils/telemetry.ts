@@ -1,4 +1,5 @@
 import { TelemetryEvent } from '../types';
+import { getApiUrl } from './apiConfig';
 
 const TELEMETRY_STORAGE_KEY = 'ARES3_TELEMETRY_EVENTS';
 const MAX_LOCAL_EVENTS = 500;
@@ -52,7 +53,7 @@ class TelemetryService {
 
     // If online backend available, push asynchronously
     if (typeof window !== 'undefined' && 'fetch' in window) {
-      fetch('/api/telemetry/event', {
+      fetch(getApiUrl('/api/telemetry/event'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(event),

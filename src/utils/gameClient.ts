@@ -6,6 +6,7 @@ import {
   SectorId,
 } from '../types';
 import { AuthClient, parseSafeJsonResponse } from './authClient';
+import { getApiUrl } from './apiConfig';
 
 export type { EmergencySubmissionResult };
 
@@ -37,7 +38,7 @@ class AuthoritativeGameClient {
     const requestId = generateRequestId('start_q');
     let res: Response;
     try {
-      res = await fetch('/api/attempt/start', {
+      res = await fetch(getApiUrl('/api/attempt/start'), {
         method: 'POST',
         headers: this.getHeaders({ 'x-request-id': requestId }),
         body: JSON.stringify({ questionId, sectorId, uid, requestId }),
@@ -62,7 +63,7 @@ class AuthoritativeGameClient {
     const requestId = generateRequestId('sub_q');
     let res: Response;
     try {
-      res = await fetch('/api/attempt/submit', {
+      res = await fetch(getApiUrl('/api/attempt/submit'), {
         method: 'POST',
         headers: this.getHeaders({ 'x-request-id': requestId }),
         body: JSON.stringify({ ...params, requestId }),
@@ -80,7 +81,7 @@ class AuthoritativeGameClient {
   public async getSession(uid: string): Promise<{ uid: string; lives: number; score: number }> {
     let res: Response;
     try {
-      res = await fetch(`/api/user/session/${encodeURIComponent(uid)}`, {
+      res = await fetch(getApiUrl(`/api/user/session/${encodeURIComponent(uid)}`), {
         headers: this.getHeaders(),
       });
     } catch {
@@ -96,7 +97,7 @@ class AuthoritativeGameClient {
   public async resetSession(uid: string): Promise<{ lives: number; score: number }> {
     let res: Response;
     try {
-      res = await fetch('/api/user/reset', {
+      res = await fetch(getApiUrl('/api/user/reset'), {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({ uid }),
@@ -118,7 +119,7 @@ class AuthoritativeGameClient {
     const requestId = generateRequestId('start_em');
     let res: Response;
     try {
-      res = await fetch('/api/timetrial/start', {
+      res = await fetch(getApiUrl('/api/timetrial/start'), {
         method: 'POST',
         headers: this.getHeaders({ 'x-request-id': requestId }),
         body: JSON.stringify({ missionId, uid, requestId }),
@@ -143,7 +144,7 @@ class AuthoritativeGameClient {
     const requestId = generateRequestId('sub_em');
     let res: Response;
     try {
-      res = await fetch('/api/timetrial/submit', {
+      res = await fetch(getApiUrl('/api/timetrial/submit'), {
         method: 'POST',
         headers: this.getHeaders({ 'x-request-id': requestId }),
         body: JSON.stringify({ ...params, requestId }),

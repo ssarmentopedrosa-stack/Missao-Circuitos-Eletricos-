@@ -29,6 +29,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { AuthClient } from '../utils/authClient';
+import { getApiUrl } from '../utils/apiConfig';
 import { ClassItem, TeacherDashboardKpis } from '../types';
 
 interface TeacherDashboardModalProps {
@@ -220,7 +221,7 @@ export const TeacherDashboardModal: React.FC<TeacherDashboardModalProps> = ({
     setIsLoading(true);
     setAuthError(null);
     try {
-      const res = await fetch('/api/teacher/verify-pin', {
+      const res = await fetch(getApiUrl('/api/teacher/verify-pin'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin: pin.trim() }),
