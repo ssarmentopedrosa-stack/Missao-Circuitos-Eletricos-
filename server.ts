@@ -140,7 +140,7 @@ function classifyError(err: unknown): { status: number; message: string; errorCo
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
   const startedAt = Date.now();
 
   app.use(express.json());
@@ -772,8 +772,19 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Missão Circuitos Elétricos 2.0 (Authoritative Persistent Engine) running on http://0.0.0.0:${PORT}`);
+  });
+
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE' && PORT !== 3000) {
+      console.warn(`[Rede] Porta ${PORT} já ocupada por proxy reverso. Vinculando na porta 3000...`);
+      app.listen(3000, '0.0.0.0', () => {
+        console.log(`Missão Circuitos Elétricos 2.0 (Authoritative Persistent Engine) running on http://0.0.0.0:3000`);
+      });
+    } else {
+      throw err;
+    }
   });
 }
 

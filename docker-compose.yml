@@ -1,0 +1,28 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: missao-circuitos-backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - ALLOWED_ORIGIN=https://missao-circuitos-eletricos.vercel.app
+      # Secrets como TEACHER_PASSCODE e GEMINI_API_KEY devem ser configurados no arquivo .env da VPS
+      - TEACHER_PASSCODE=${TEACHER_PASSCODE:-prof-ares-2026}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      # Volume persistente do banco autoritativo SQLite (WAL)
+      - /var/lib/missao-circuitos/data:/app/data
+      # Volume de backups periódicos
+      - /var/lib/missao-circuitos/backups:/app/backups
+    deploy:
+      # Mandatório: Instância única (sem escala horizontal para integridade ACID do SQLite)
+      replicas: 1
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
